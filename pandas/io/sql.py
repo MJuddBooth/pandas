@@ -478,7 +478,7 @@ def read_sql(sql, con, index_col=None, coerce_float=True, params=None,
     infer_index : bool, default: False
         If true and reading from a table, infer the index columns from
         any primary keys that are present on the table.
-        
+
     Returns
     -------
     DataFrame
@@ -503,7 +503,7 @@ def read_sql(sql, con, index_col=None, coerce_float=True, params=None,
         return pandas_sql.read_query(
             sql, index_col=index_col, params=params,
             coerce_float=coerce_float, parse_dates=parse_dates,
-            chunksize=chunksize)
+            chunksize=chunksize, infer_index=infer_index)
 
     try:
         _is_table_name = pandas_sql.has_table(sql)
@@ -524,7 +524,7 @@ def read_sql(sql, con, index_col=None, coerce_float=True, params=None,
 
 
 def to_sql(frame, name, con, flavor='sqlite', schema=None, if_exists='fail',
-           index=True, index_label=None, chunksize=None, dtype=None, 
+           index=True, index_label=None, chunksize=None, dtype=None,
            keys=None, create_pk=False):
     """
     Write records stored in a DataFrame to a SQL database.
@@ -563,8 +563,8 @@ def to_sql(frame, name, con, flavor='sqlite', schema=None, if_exists='fail',
         Optional specifying the datatype for columns. The SQL type should
         be a SQLAlchemy type, or a string for sqlite3 fallback connection.
     create_pk: bool, default False
-        Create the primary key on the table based on the supplied keys argument or 
-        inferred from the components of the index.        
+        Create the primary key on the table based on the supplied keys
+        argument or inferred from the components of the index.
     keys: string or listlike, default None
         Column or columns to be used to create a primary key on the table.
     """
@@ -581,7 +581,8 @@ def to_sql(frame, name, con, flavor='sqlite', schema=None, if_exists='fail',
 
     pandas_sql.to_sql(frame, name, if_exists=if_exists, index=index,
                       index_label=index_label, schema=schema,
-                      chunksize=chunksize, dtype=dtype, keys=keys, create_pk=create_pk)
+                      chunksize=chunksize, dtype=dtype, keys=keys,
+                      create_pk=create_pk)
 
 
 def has_table(table_name, con, flavor='sqlite', schema=None):
@@ -801,7 +802,7 @@ class SQLTable(PandasObject):
                 elif infer_index:
                     index = [c.name for c in self.table.columns if c.primary_key]
                     if index:
-                        self.frame.set_index(index, inplace=True)                
+                        self.frame.set_index(index, inplace=True)
 
                 yield self.frame
 
@@ -837,8 +838,8 @@ class SQLTable(PandasObject):
             elif infer_index:
                 index = [c.name for c in self.table.columns if c.primary_key]
                 if index:
-                    self.frame.set_index(index, inplace=True)                
-                
+                    self.frame.set_index(index, inplace=True)
+
             return self.frame
 
     def _index_name(self, index, index_label):
@@ -1262,10 +1263,10 @@ class SQLDatabase(PandasSQL):
             Optional specifying the datatype for columns. The SQL type should
             be a SQLAlchemy type.
         create_pk: bool, default False
-            create the primary key on the table based on the supplied keys argument or 
-            inferred from the components of the index.
+            create the primary key on the table based on the supplied keys
+            argument or inferred from the components of the index.
         keys: string or listlike, default None
-            column or columns to be used to create a primary key on the table.            
+            column or columns to be used to create a primary key on the table.
         """
         if dtype is not None:
             from sqlalchemy.types import to_instance, TypeEngine
@@ -1280,16 +1281,18 @@ class SQLDatabase(PandasSQL):
         if create_pk:
             if keys is None:
                 keys = table.index if table.index is not None else None
-                #FIXME: seems wasteful, but we want to use the table._index_name functionality
+                #FIXME: seems wasteful, but we want to use the
+                # table._index_name functionality
                 # so we recreate the table with the keys
                 table = SQLTable(name, self, frame=frame, index=index,
                          if_exists=if_exists, index_label=index_label,
-                         schema=schema, dtype=dtype, keys=keys)                
+                         schema=schema, dtype=dtype, keys=keys)
             if table.keys is None:
-                raise ValueError("specified create_pk=True but cannot identify any keys.")
+                raise ValueError(
+                    "specified create_pk=True but cannot identify any keys.")
         elif keys:
             raise ValueError("keys specified but create_pk is False!")
-                         
+
         table.create()
         table.insert(chunksize)
         if (not name.isdigit() and not name.islower()):
@@ -1664,7 +1667,8 @@ class SQLiteDatabase(PandasSQL):
         return result
 
     def to_sql(self, frame, name, if_exists='fail', index=True,
-               index_label=None, schema=None, chunksize=None, dtype=None, keys=None, create_pk=False):
+               index_label=None, schema=None, chunksize=None, dtype=None,
+               keys=None, create_pk=False):
         """
         Write records stored in a DataFrame to a SQL database.
 
@@ -1691,7 +1695,11 @@ class SQLiteDatabase(PandasSQL):
         dtype : dict of column name to SQL type, default None
             Optional specifying the datatype for columns. The SQL type should
             be a string.
-
+        create_pk: bool, default False
+            Create the primary key on the table based on the supplied keys
+            argument or inferred from the components of the index.
+        keys: string or listlike, default None
+            Column or columns to be used to create a primary key on the table.
         """
         if dtype is not None:
             for col, my_type in dtype.items():
