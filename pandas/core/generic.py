@@ -1484,16 +1484,16 @@ class NDFrame(PandasObject, SelectionMixin):
             Optional specifying the datatype for columns. The SQL type should
             be a SQLAlchemy type, or a string for sqlite3 fallback connection.
         create_pk: bool, default False
-            create the primary key on the table based on the supplied keys argument or 
-            inferred from the components of the index.
+            create the primary key on the table based on the supplied keys
+            argument or inferred from the components of the index.
         keys: string or listlike, default None
             column or columns to be used to create a primary key on the table.
          """
         from pandas.io import sql
         sql.to_sql(self, name, con, flavor=flavor, schema=schema,
                    if_exists=if_exists, index=index, index_label=index_label,
-                   chunksize=chunksize, dtype=dtype, keys=keys,
-                   create_pk=create_pk)
+                   chunksize=chunksize, dtype=dtype,
+                   keys=keys, create_pk=create_pk)
 
     def to_pickle(self, path, compression='infer',
                   protocol=pkl.HIGHEST_PROTOCOL):
