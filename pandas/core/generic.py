@@ -2448,8 +2448,8 @@ class NDFrame(PandasObject, SelectionMixin):
 
             .. versionadded:: 0.24.0
         create_pk: bool, default False
-            create the primary key on the table based on the supplied keys argument or
-            inferred from the components of the index.
+            create the primary key on the table based on the supplied keys
+            argument or inferred from the components of the index.
         keys: string or listlike, default None
             column or columns to be used to create a primary key on the table.
         Raises
@@ -2533,7 +2533,6 @@ class NDFrame(PandasObject, SelectionMixin):
         sql.to_sql(self, name, con, schema=schema, if_exists=if_exists,
                 index=index, index_label=index_label, chunksize=chunksize,
                 dtype=dtype, method=method, keys=keys, create_pk=create_pk)
-
 
     def to_pickle(self, path, compression='infer',
                   protocol=pkl.HIGHEST_PROTOCOL):

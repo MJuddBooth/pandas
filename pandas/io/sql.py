@@ -393,7 +393,7 @@ def read_sql(sql, con, index_col=None, coerce_float=True, params=None,
         return pandas_sql.read_query(
             sql, index_col=index_col, params=params,
             coerce_float=coerce_float, parse_dates=parse_dates,
-            chunksize=chunksize)
+            chunksize=chunksize, infer_index=infer_index)
 
     try:
         _is_table_name = pandas_sql.has_table(sql)
@@ -415,12 +415,8 @@ def read_sql(sql, con, index_col=None, coerce_float=True, params=None,
 
 
 def to_sql(frame, name, con, schema=None, if_exists='fail', index=True,
-           index_label=None, chunksize=None, dtype=None, method=None):
-=
-def to_sql(frame, name, con, schema=None, if_exists='fail', index=True,
            index_label=None, chunksize=None, dtype=None, method=None,
            keys=None, create_pk=False):
->>>>>>> Add support for creating primary keys in to_sql, reading in read_sql.
     """
     Write records stored in a DataFrame to a SQL database.
 
@@ -465,8 +461,8 @@ def to_sql(frame, name, con, schema=None, if_exists='fail', index=True,
         section :ref:`insert method <io.sql.method>`.
         .. versionadded:: 0.24.0
     create_pk: bool, default False
-        Create the primary key on the table based on the supplied keys argument or
-        inferred from the components of the index.
+        Create the primary key on the table based on the supplied keys
+        argument or inferred from the components of the index.
     keys: string or listlike, default None
         Column or columns to be used to create a primary key on the table.
 
@@ -1198,8 +1194,8 @@ class SQLDatabase(PandasSQL):
 
             .. versionadded:: 0.24.0
         create_pk: bool, default False
-            create the primary key on the table based on the supplied keys argument or
-            inferred from the components of the index.
+            create the primary key on the table based on the supplied keys
+            argument or inferred from the components of the index.
         keys: string or listlike, default None
             column or columns to be used to create a primary key on the table.
         """
@@ -1219,9 +1215,10 @@ class SQLDatabase(PandasSQL):
         if create_pk:
             if keys is None:
                 keys = table.index if table.index is not None else None
-                #FIXME: seems wasteful, but we want to use
-                # the table._index_name functionality
-                # so we recreate the table with the keys
+
+                #FIXME: seems wasteful, but we want to use the
+                # table._index_name functionality so we recreate
+                # the table with the keys
                 table = SQLTable(name, self, frame=frame, index=index,
                          if_exists=if_exists, index_label=index_label,
                          schema=schema, dtype=dtype, keys=keys)
@@ -1591,6 +1588,11 @@ class SQLiteDatabase(PandasSQL):
             section :ref:`insert method <io.sql.method>`.
 
             .. versionadded:: 0.24.0
+        create_pk: bool, default False
+            Create the primary key on the table based on the supplied keys
+            argument or inferred from the components of the index.
+        keys: string or listlike, default None
+            Column or columns to be used to create a primary key on the table.
         """
         if dtype and not is_dict_like(dtype):
             dtype = {col_name: dtype for col_name in frame}
