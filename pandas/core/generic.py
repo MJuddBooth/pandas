@@ -2419,7 +2419,8 @@ class NDFrame(PandasObject, SelectionMixin):
                                   **kwargs)
 
     def to_sql(self, name, con, schema=None, if_exists='fail', index=True,
-               index_label=None, chunksize=None, dtype=None, method=None):
+               index_label=None, chunksize=None, dtype=None, method=None,
+               keys=None, create_pk=False):
         """
         Write records stored in a DataFrame to a SQL database.
 
@@ -2468,7 +2469,11 @@ class NDFrame(PandasObject, SelectionMixin):
             section :ref:`insert method <io.sql.method>`.
 
             .. versionadded:: 0.24.0
-
+        create_pk: bool, default False
+            create the primary key on the table based on the supplied keys argument or
+            inferred from the components of the index.
+        keys: string or listlike, default None
+            column or columns to be used to create a primary key on the table.
         Raises
         ------
         ValueError
@@ -2548,8 +2553,9 @@ class NDFrame(PandasObject, SelectionMixin):
         """
         from pandas.io import sql
         sql.to_sql(self, name, con, schema=schema, if_exists=if_exists,
-                   index=index, index_label=index_label, chunksize=chunksize,
-                   dtype=dtype, method=method)
+                index=index, index_label=index_label, chunksize=chunksize,
+                dtype=dtype, method=method, keys=keys, create_pk=create_pk)
+
 
     def to_pickle(self, path, compression='infer',
                   protocol=pkl.HIGHEST_PROTOCOL):
