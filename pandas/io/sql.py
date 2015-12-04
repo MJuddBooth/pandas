@@ -393,7 +393,7 @@ def read_sql(sql, con, index_col=None, coerce_float=True, params=None,
         return pandas_sql.read_query(
             sql, index_col=index_col, params=params,
             coerce_float=coerce_float, parse_dates=parse_dates,
-            chunksize=chunksize, infer_index=infer_index)
+            chunksize=chunksize)
 
     try:
         _is_table_name = pandas_sql.has_table(sql)
