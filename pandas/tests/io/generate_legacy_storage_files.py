@@ -280,6 +280,9 @@ def create_msgpack_data():
         del data['series']['dt_tz']
         del data['frame']['dt_mixed_tzs']
     # Not supported
+    elif LooseVersion(pandas.__version__) > '0.17.0':
+        del data["scalars"]["period"]
+        del data["series"]["period"]
     del data['sp_series']
     del data['sp_frame']
     del data['series']['cat']
@@ -292,14 +295,34 @@ def create_msgpack_data():
     del data['offsets']
     return _u(data)
 
+def create_hdf_data():
+    data = create_data()
+    data = {k:data[k] for k in ['series', 'frame', 'panel']}
 
-def platform_name():
-    return '_'.join([str(pandas.__version__), str(pl.machine()),
-                     str(pl.system().lower()), str(pl.python_version())])
+    del data['series']['cat']
+    del data['frame']['cat_onecol']
+    del data['frame']['cat_and_float']
+    del data['series']['mixed']
+    del data['frame']['mixed_dup']
 
+    return data
 
-def write_legacy_pickles(output_dir):
+def platform_name(version = pandas.__version__):
+    return '_'.join([str(version), str(pl.machine()), str(pl.system().lower()),
+                     str(pl.python_version())])
 
+def get_storage_path(output_dir, storage_format, version = pandas.__version__,
+                     include_platform = True):
+    if include_platform:
+        basepath = os.path.join(output_dir, platform_name(version))
+    else:
+        basepath = os.path.join(output_dir, str(version))
+    filename = basepath + "." + storage_format
+    return basepath, filename
+
+def write_legacy_pickles(output_dir, version, include_platform=True):
+
+    storage_format = "pickle"
     # make sure we are < 0.13 compat (in py3)
     try:
         from pandas.compat import zip, cPickle as pickle  # noqa
@@ -312,41 +335,72 @@ def write_legacy_pickles(output_dir):
           "and python version")
     print("  pandas version: {0}".format(version))
     print("  output dir    : {0}".format(output_dir))
-    print("  storage format: pickle")
+    print("  storage format: {0}".format(storage_format))
 
-    pth = '{0}.pickle'.format(platform_name())
+    basepath, filename = get_storage_path(output_dir, storage_format,
+                                          version=version,
+                                          include_platform=include_platform)
+    if not os.path.exists(basepath): os.makedirs(basepath)
 
-    fh = open(os.path.join(output_dir, pth), 'wb')
-    pickle.dump(create_pickle_data(), fh, pickle.HIGHEST_PROTOCOL)
-    fh.close()
+    with open(filename, 'wb') as fh:
+        pickle.dump(create_pickle_data(), fh, pickle.HIGHEST_PROTOCOL)
 
-    print("created pickle file: %s" % pth)
+    print("created {0} file: {1}".format(storage_format, filename))
 
+def write_legacy_msgpack(output_dir, compress, version, include_platform = True):
 
-def write_legacy_msgpack(output_dir, compress):
-
-    version = pandas.__version__
+    storage_format = "msgpack"
 
     print("This script generates a storage file for the current arch, "
           "system, and python version")
     print("  pandas version: {0}".format(version))
     print("  output dir    : {0}".format(output_dir))
-    print("  storage format: msgpack")
-    pth = '{0}.msgpack'.format(platform_name())
-    to_msgpack(os.path.join(output_dir, pth), create_msgpack_data(),
-               compress=compress)
+    print("  storage format: {0}".format(storage_format))
 
-    print("created msgpack file: %s" % pth)
+    basepath, filename = get_storage_path(output_dir, storage_format,
+                                          version=version,
+                                          include_platform=include_platform)
+    if not os.path.exists(basepath): os.makedirs(basepath)
 
+    to_msgpack(filename, create_msgpack_data(), compress=compress)
+
+    print("created {0} file: {1}".format(storage_format, filename))
+
+def write_legacy_hdf(output_dir, version, include_platform = True):
+
+    storage_format = "hdf"
+
+    print("This script generates a storage file for the current arch, "
+          "system, and python version")
+    print("  pandas version: {0}".format(version))
+    print("  output dir    : {0}".format(output_dir))
+    print("  storage format: {0}".format(storage_format))
+
+    basepath, filename = get_storage_path(output_dir, storage_format,
+                                          version=version,
+                                          include_platform=include_platform)
+    if not os.path.exists(basepath): os.makedirs(basepath)
+
+    data = create_hdf_data()
+    for cat in ['series', 'frame', 'panel']:
+        for kind, df in data[cat].items():
+            format = "fixed" if kind == "period" else "table"
+            try:
+                fname = os.path.join(basepath, "{}_{}.h5".format(cat, kind))
+                df.to_hdf(fname, "df", format = format)
+            except Exception as e:
+                print("skipped {}_{}: {}".format(cat, kind, e))
+
+    print("created {0} file: {1}".format(storage_format, basepath))
 
 def write_legacy_file():
     # force our cwd to be the first searched
     sys.path.insert(0, '.')
 
-    if not (3 <= len(sys.argv) <= 4):
+    if not (3 <= len(sys.argv) <= 6):
         exit("Specify output directory and storage type: generate_legacy_"
              "storage_files.py <output_dir> <storage_type> "
-             "<msgpack_compress_type>")
+             "<msgpack_compress_type> <version_string> <include_platform>")
 
     output_dir = str(sys.argv[1])
     storage_type = str(sys.argv[2])
@@ -355,12 +409,20 @@ def write_legacy_file():
     except IndexError:
         compress_type = None
 
+    version = pandas.__version__ if len(sys.argv) < 5 else sys.argv[4]
+    include_platform = True if len(sys.argv) < 6 else eval(sys.argv[5])
+
     if storage_type == 'pickle':
-        write_legacy_pickles(output_dir=output_dir)
+        write_legacy_pickles(output_dir=output_dir, version=version,
+                             include_platform=include_platform)
     elif storage_type == 'msgpack':
-        write_legacy_msgpack(output_dir=output_dir, compress=compress_type)
+        write_legacy_msgpack(output_dir=output_dir, compress=compress_type,
+                             version=version, include_platform=include_platform)
+    elif storage_type == 'hdf':
+        write_legacy_hdf(output_dir=output_dir, version=version,
+                         include_platform=include_platform)
     else:
-        exit("storage_type must be one of {'pickle', 'msgpack'}")
+        exit("storage_type must be one of {'pickle', 'msgpack' or 'hdf'}")
 
 
 if __name__ == '__main__':
