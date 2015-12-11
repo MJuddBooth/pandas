@@ -60,7 +60,7 @@ from distutils.version import LooseVersion
 
 
 # versioning attribute
-_version = '0.15.2'
+_version = '0.18.0'
 
 # encoding
 # PY3 encoding if we don't specify
@@ -126,6 +126,10 @@ class PossibleDataLossError(Exception):
 
 
 class ClosedFileError(Exception):
+    pass
+
+
+class RoundTripError(Exception):
     pass
 
 
@@ -1893,6 +1897,7 @@ class DataCol(IndexCol):
         self.dtype_attr = u("%s_dtype" % self.name)
         self.meta = meta
         self.meta_attr = u("%s_meta" % self.name)
+        self.column_dtype_attr = u("%s_column_dtype" % self.name)
         self.set_data(data)
         self.set_metadata(metadata)
 
@@ -2252,42 +2257,82 @@ class DataCol(IndexCol):
 
         return self
 
+    @staticmethod
+    def _unconvert_column_values(values, dtype):
+        if len(values.shape) > 1 and values.shape[1] > 1: # multiIndex
+            newvalues = map(tuple, values.tolist())
+        elif dtype == "datetime64":
+            newvalues = _unconvert_index(values, dtype).tolist() # don't return index
+        else:
+            newvalues = values.tolist()
+
+        return newvalues
+
+    @staticmethod
+    def _convert_column_values(values):
+        converted = np.array(values)
+        if len(converted.shape) == 1: # not multiindex
+            dtype = lib.infer_dtype(values)
+            if dtype == "datetime" and isinstance(values[0], Timestamp):
+                ci = _convert_index(DatetimeIndex(values))
+                dtype = "datetime64"
+            else:
+                ci = _convert_index(values) 
+            converted = ci.values
+        else:
+            dtype = "multiindex"
+        return dtype, converted
+     
+    def _maybe_values_to_carray(self):
+        """ write to carray if unconvert(convert())==identity
+        otherwise raise
+        """
+        dtype, values = self._convert_column_values(self.values)
+        uvalues = self._unconvert_column_values(values, dtype)
+        if uvalues != self.values:
+            raise RoundTripError("Round trip failed!")
+        self.handle.create_carray(self.attrs._v_node._v_parent,
+                                   self.kind_attr,
+                                   obj=values)
+        return dtype
+
     def get_attr(self):
         """ get the data for this column """
         self.values = getattr(self.attrs, self.kind_attr, None)
+        col_dtype = getattr(self.attrs, self.column_dtype_attr, None) # this has to be sef if new style
         if self.values is None:
             try:
                 data = self.handle.get_node(self.attrs._v_node._v_parent, self.kind_attr)[:]
-                if len(data.shape) > 1 and data.shape[1] > 1: # multiIndex
-                    self.values = map(tuple, data.tolist())
-                else:
-                    self.values = data.tolist()
-
+                self.values = self._unconvert_column_values(data, col_dtype)               
             except NoSuchNodeError:
                 pass
         self.dtype = getattr(self.attrs, self.dtype_attr, None)
         self.meta = getattr(self.attrs, self.meta_attr, None)
         self.set_kind()
-
+    
     def set_attr(self):
         """ set the data for this colummn """
-        #setattr(self.attrs, self.kind_attr, self.values)
         try:
-            self.handle.create_carray(self.attrs._v_node._v_parent,
-                                   self.kind_attr,
-                                   obj=np.array(self.values))
-        except NodeError as e: 
+            column_dtype = self._maybe_values_to_carray()
+        except NodeError as e:
             self.handle.remove_node(self.attrs._v_node._v_parent,
                                    self.kind_attr)
-            self.handle.create_carray(self.attrs._v_node._v_parent,
-                                   self.kind_attr,
-                                   obj=np.array(self.values))    
-        except Exception as e: # for debugging
+            column_dtype = self._maybe_values_to_carray()
+        except (RoundTripError, ValueError) as e:
+            # revert to old behavior
+            setattr(self.attrs, self.kind_attr, self.values)
+            
+            column_dtype, _ = self._convert_column_values(self.values)
+            ws = "unable to store data col values {d} (inferred type {t}) as carray"
+            ws = ws.format(d=self.kind_attr, t=column_dtype)
+            warnings.warn(ws, PerformanceWarning) 
+        except Exception as e: #FIXME: for debugging, remove in prod 
             raise      
+        
         setattr(self.attrs, self.meta_attr, self.meta)
         if self.dtype is not None:
             setattr(self.attrs, self.dtype_attr, self.dtype)
-
+        setattr(self.attrs, self.column_dtype_attr, column_dtype) #used for reading
 
 class DataIndexableCol(DataCol):
 
@@ -3277,21 +3322,56 @@ class Table(Fixed):
         """ update our table index info """
         self.attrs.info = self.info
 
+    @staticmethod
+    def _convert_ni_axis(values, dtype):
+        if dtype == "DatetimeIndex":
+            ind = DatetimeIndex(values) # cast to get the conversion right
+            values = _convert_index(ind).values
+        elif dtype in ("MultiIndex"):
+            values = np.array(values)
+        else:
+            inferred_dtype = lib.infer_dtype(values)
+            if inferred_dtype == "unicode": # not supported by convert_index
+                values = np.array(values)
+            else:
+                values = _convert_index(values).values        
+        return values
+    
+    @staticmethod
+    def _unconvert_ni_axis(values, dtype):
+        if dtype == "DatetimeIndex":
+            values = list(_unconvert_index(values, "datetime64"))
+        elif len(values.shape) > 1 and values.shape[1] > 1:
+            values = map(tuple, values.tolist())
+        else:
+            values = values.tolist()
+        return values
+
+    def maybe_index_to_carray(self, dim, flds, name):
+        """ Convert index to carray if possible """ 
+        dtype = self.info[dim].get('type')
+        values = self._convert_ni_axis(flds, dtype)
+        uvalues = self._unconvert_ni_axis(values, dtype) 
+        if flds != uvalues:
+            raise RoundTripError("round trip conversion failed")
+        self._handle.create_carray(self.attrs._v_node, name, obj=values)
+                   
     def set_non_index_axes(self):
         """ Write the axes to carrays """
         def f(dim, flds):
             name = "non_index_axes_%d" % dim
             try:
-                self._handle.create_carray(self.attrs._v_node, name, obj=np.array(flds))
-            except ValueError as e: 
-                # Should probably make this check:
-                #if e.message == "unknown type: 'object'":
-                #    raise ValueError("axis {} has dtype 'object' which cannot be saved to carray".format(dim))
-                raise                
-            except NodeError as e: 
+                self.maybe_index_to_carray(dim, flds, name)       
+            except NodeError as e:
                 self._handle.remove_node(self.attrs._v_node, name)
-                self._handle.create_carray(self.attrs._v_node, name, obj=np.array(flds))                
-            return dim, flds
+                self.maybe_index_to_carray(dim, flds, name)
+            except (RoundTripError, TypeError, ValueError) as e: 
+                inferred_type = lib.infer_dtype(flds)
+                ws = "unable to store axis {d} (inferred type {t}) as carray"
+                ws = ws.format(d=dim, t=inferred_type)
+                warnings.warn(ws, PerformanceWarning)
+                return dim, flds # revert to old behavior    
+            return dim, name
         
         replacement = [f(dim, flds) for dim, flds in self.non_index_axes]
         self.attrs.non_index_axes = replacement
@@ -3301,14 +3381,12 @@ class Table(Fixed):
         for tables stored prior to v0.17"""
         def f(dim, flds):
             if isinstance(flds, string_types):
-                flds = self._handle.get_node(self.attrs._v_node, flds)[:]
-                if len(flds.shape) > 1 and flds.shape[1] > 1:
-                    flds = map(tuple, flds.tolist())
-                else:
-                    flds = flds.tolist()
-                return dim, flds
+                svalues = self._handle.get_node(self.attrs._v_node, flds)[:]
+                dtype = self.info.get(dim, {}).get('type', "")
+                values = self._unconvert_ni_axis(svalues, dtype)
+                return dim, values
             else:
-                return dim, flds #if not a string presumably pre v17 list
+                return dim, flds #if not a string presumably pre v18 list
         non_index_axes = getattr(self.attrs, 'non_index_axes', [])
         new = [f(dim, flds) for dim, flds in non_index_axes] 
         return new
