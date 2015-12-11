@@ -57,6 +57,7 @@ import numpy as np
 import pandas
 import platform as pl
 from datetime import timedelta
+import itertools
 
 _loose_version = LooseVersion(pandas.__version__)
 
@@ -155,6 +156,7 @@ def create_data():
                   period=Series([Period('2000Q1')] * 5))
 
     mixed_dup_df = DataFrame(data)
+
     mixed_dup_df.columns = list(u"ABCDA")
     frame = dict(float=DataFrame({u'A': series[u'float'],
                                   u'B': series[u'float'] + 1}),
@@ -170,6 +172,24 @@ def create_data():
                                               [u'one', u'two', u'one',
                                                u'two', u'three']])),
                                   names=[u'first', u'second'])),
+                 mixed_index=DataFrame(dict(u'A'=np.arange(5).astype(np.float64),
+                                            u'B'=np.arange(5).astype(np.int64)),
+                                       index=Index([u'One', u'Two', u'Three', 4, 5])),
+                 mixed_cols=DataFrame(dict(u'A'=np.arange(5).astype(np.float64),
+                                           u'B'=np.arange(5).astype(np.int64)),
+                                      index=[1, 2, 3, 4, 5], columns=Index([u'One', 2])),
+                 mi_mixed=DataFrame(dict(u'A'=np.arange(10).astype(np.float64),
+                                         u'B'=np.arange(10).astype(np.int64)),
+                                    index=MultiIndex.from_tuples(
+                                        tuple(itertools.product(date_range("20151101", periods=5),
+                                                                (1, 2))),
+                                        names=[u'date', u'key'])),
+                 mi_mi_mixed=DataFrame({(u'A',1):np.arange(10).astype(np.float64),
+                                        (u'A', 2):np.arange(10).astype(np.int64)},
+                                       index=MultiIndex.from_tuples(
+                                           tuple(itertools.product(date_range("20151101", periods=5),
+                                                                   (1, 2))),
+                                           names=[u'date', u'key'])),
                  dup=DataFrame(np.arange(15).reshape(5, 3).astype(np.float64),
                                columns=[u'A', u'B', u'A']),
                  cat_onecol=DataFrame({u'A': Categorical([u'foo', u'bar'])}),
@@ -185,6 +205,7 @@ def create_data():
                      u'B': Timestamp('20130603', tz='CET'),
                      u'C': Timestamp('20130603', tz='UTC')}, index=range(5))
                  )
+    frame["mi_mixed_t"] = frame["mi_mixed"].T
 
     with catch_warnings(record=True):
         mixed_dup_panel = Panel({u'ItemA': frame[u'float'],
@@ -304,6 +325,8 @@ def create_hdf_data():
     del data['frame']['cat_and_float']
     del data['series']['mixed']
     del data['frame']['mixed_dup']
+    del data['frame']['mi_mi_mixed']
+    del data['frame']['mixed_index']  
 
     return data
 
@@ -384,12 +407,13 @@ def write_legacy_hdf(output_dir, version, include_platform = True):
     data = create_hdf_data()
     for cat in ['series', 'frame', 'panel']:
         for kind, df in data[cat].items():
-            format = "fixed" if kind == "period" else "table"
+            fmt = "fixed" if kind == "period" else "table"
             try:
                 fname = os.path.join(basepath, "{}_{}.h5".format(cat, kind))
-                df.to_hdf(fname, "df", format = format)
+                df.to_hdf(fname, "df", format = fmt)
             except Exception as e:
-                print("skipped {}_{}: {}".format(cat, kind, e))
+                print("oops, skipped {}_{}: {}".format(cat, kind, e))
+                os.unlink(fname)
 
     print("created {0} file: {1}".format(storage_format, basepath))
 
@@ -402,6 +426,7 @@ def write_legacy_file():
              "storage_files.py <output_dir> <storage_type> "
              "<msgpack_compress_type> <version_string> <include_platform>")
 
+    #FIXME: should use argparse
     output_dir = str(sys.argv[1])
     storage_type = str(sys.argv[2])
     try:
