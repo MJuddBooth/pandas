@@ -16,7 +16,7 @@ import numpy as np
 
 import pandas as pd
 from pandas import (Series, DataFrame, Panel, Panel4D, Index,
-                    MultiIndex, Int64Index)
+                    MultiIndex, Int64Index, Timestamp, Timedelta)
 from pandas.core import config
 from pandas.io.common import _stringify_path
 from pandas.sparse.api import SparseSeries, SparseDataFrame, SparsePanel
@@ -2084,7 +2084,7 @@ class DataCol(IndexCol):
     def _unconvert_column_values(values, dtype):
         if len(values.shape) > 1 and values.shape[1] > 1: # multiIndex
             newvalues = map(tuple, values.tolist())
-        elif dtype == "datetime64":
+        elif dtype in ["datetime64", "timedelta64", "timedelta"]:
             newvalues = _unconvert_index(values, dtype).tolist() # don't return index
         else:
             newvalues = values.tolist()
@@ -2096,9 +2096,13 @@ class DataCol(IndexCol):
         converted = np.array(values)
         if len(converted.shape) == 1: # not multiindex
             dtype = lib.infer_dtype(values)
-            if dtype == "datetime" and isinstance(values[0], Timestamp):
-                ci = _convert_index(DatetimeIndex(values))
-                dtype = "datetime64"
+            if dtype in ["datetime", "timedelta"]: 
+                if isinstance(values[0], Timestamp): # FIXME. And if not?
+                    ci = _convert_index(DatetimeIndex(values))
+                    dtype = "datetime64"
+                elif isinstance(values[0], Timedelta):
+                    ci = _convert_index(TimedeltaIndex(values))
+                    dtype = "timedelta64"
             else:
                 ci = _convert_index(values) 
             converted = ci.values
@@ -2107,7 +2111,7 @@ class DataCol(IndexCol):
         return dtype, converted
      
     def _maybe_values_to_carray(self):
-        """ write to carray if unconvert(convert())==identity
+        """write to carray if unconvert(convert())==identity
         otherwise raise
         """
         dtype, values = self._convert_column_values(self.values)
@@ -3136,6 +3140,9 @@ class Table(Fixed):
         if dtype == "DatetimeIndex":
             ind = DatetimeIndex(values) # cast to get the conversion right
             values = _convert_index(ind).values
+        elif dtype == "TimedeltaIndex":
+            ind = TimedeltaIndex(values) # cast to get the conversion right
+            values = _convert_index(ind).values
         elif dtype in ("MultiIndex"):
             values = np.array(values)
         else:
@@ -3148,7 +3155,7 @@ class Table(Fixed):
     
     @staticmethod
     def _unconvert_ni_axis(values, dtype):
-        if dtype == "DatetimeIndex":
+        if dtype in ["DatetimeIndex", "TimedeltaIndex"]:
             values = list(_unconvert_index(values, "datetime64"))
         elif len(values.shape) > 1 and values.shape[1] > 1:
             values = map(tuple, values.tolist())
