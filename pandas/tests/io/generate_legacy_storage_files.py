@@ -58,6 +58,7 @@ import pandas
 import platform as pl
 from datetime import timedelta
 import itertools
+from pandas.tseries.tdi import timedelta_range
 
 _loose_version = LooseVersion(pandas.__version__)
 
@@ -130,6 +131,7 @@ def create_data():
         from pandas import interval_range
         index['interval'] = interval_range(0, periods=10)
 
+    tdindex = timedelta_range(start='0s', periods=10, freq='1s', name='example')
     mi = dict(reg2=MultiIndex.from_tuples(
         tuple(zip(*[[u'bar', u'bar', u'baz', u'baz', u'foo',
                      u'foo', u'qux', u'qux'],
@@ -162,6 +164,7 @@ def create_data():
                                   u'B': series[u'float'] + 1}),
                  int=DataFrame({u'A': series[u'int'],
                                 u'B': series[u'int'] + 1}),
+                 td_index=DataFrame(np.arange(10), columns=[u'A'], index=tdindex),
                  mixed=DataFrame({k: data[k]
                                   for k in [u'A', u'B', u'C', u'D']}),
                  mi=DataFrame({u'A': np.arange(5).astype(np.float64),
@@ -206,6 +209,7 @@ def create_data():
                      u'C': Timestamp('20130603', tz='UTC')}, index=range(5))
                  )
     frame["mi_mixed_t"] = frame["mi_mixed"].T
+    frame["td_column"] = frame["td_index"].T
 
     with catch_warnings(record=True):
         mixed_dup_panel = Panel({u'ItemA': frame[u'float'],
