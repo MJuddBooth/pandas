@@ -5234,6 +5234,26 @@ class TestHDFStore(Base):
         tm.assert_frame_equal(df_legacy, df_new)
         #df_new.to_hdf(filename, "df", format = "table")
 
+    def test_legacy_creation(self):
+        #"""test the stores that would be created by generate_legacy_storage_files
+        import pandas.io.tests.generate_legacy_storage_files as gls
+        data = gls.create_hdf_data()
+        with ensure_clean_store(self.path) as store:
+            for cat in ['series', 'frame', 'panel']:
+                for kind, df in data[cat].items():
+                    fmt = "fixed" if kind == "period" else "table"
+                    key = cat + "/" + kind
+                    if key == "frame/td_column":
+                        _x=1
+                    store.put(key, df, format = fmt)
+                    df_stored = store.get(key)
+                    if cat == "series":
+                        tm.assert_series_equal(df_stored, df)
+                    elif cat == "frame":
+                        tm.assert_frame_equal(df_stored, df)
+                    elif cat == "panel":
+                        tm.assert_panel_equal(df_stored, df)
+
     def test_legacy_stored(self):
         #"""Test compatibility reading legacy versions"""
 
