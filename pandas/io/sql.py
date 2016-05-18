@@ -457,7 +457,7 @@ def to_sql(frame, name, con, flavor=None, schema=None, if_exists='fail',
         If all columns are of the same type, one single value can be used.
 
     """
-    if if_exists not in ('fail', 'replace', 'append'):
+    if if_exists not in ('fail', 'replace', 'append', 'truncate'):
         raise ValueError("'{0}' is not valid for if_exists".format(if_exists))
 
     pandas_sql = pandasSQL_builder(con, schema=schema, flavor=flavor)
@@ -593,6 +593,8 @@ class SQLTable(PandasObject):
             elif self.if_exists == 'replace':
                 self.pd_sql.drop_table(self.name, self.schema)
                 self._execute_create()
+            elif self.if_exists == 'truncate':
+                self.pd_sql.truncate_table(self.name, self.schema)
             elif self.if_exists == 'append':
                 pass
             else:
@@ -1205,6 +1207,12 @@ class SQLDatabase(PandasSQL):
             self.get_table(table_name, schema).drop()
             self.meta.clear()
 
+    def truncate_table(self, table_name, schema=None):
+        schema = schema or self.meta.schema
+        if self.has_table(table_name, schema):
+            self.meta.reflect(only=[table_name], schema=schema)
+            table = self.get_table(table_name, schema)
+
     def _create_sql_schema(self, frame, table_name, keys=None, dtype=None):
         table = SQLTable(table_name, self, frame=frame, index=False, keys=keys,
                          dtype=dtype)
@@ -1526,6 +1534,11 @@ class SQLiteDatabase(PandasSQL):
 
     def drop_table(self, name, schema=None):
         drop_sql = "DROP TABLE %s" % _get_valid_sqlite_name(name)
+        self.execute(drop_sql)
+
+    def truncate_table(self, name, schema=None):
+        escape = _SQL_GET_IDENTIFIER[self.flavor]
+        drop_sql = "TRUNCATE TABLE %s" % escape(name)
         self.execute(drop_sql)
 
     def _create_sql_schema(self, frame, table_name, keys=None, dtype=None):
