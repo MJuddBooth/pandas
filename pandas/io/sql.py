@@ -734,7 +734,11 @@ class SQLTable(PandasObject):
             if b.is_datetime:
                 # convert to microsecond resolution so this yields
                 # datetime.datetime
-                d = b.values.astype('M8[us]').astype(object)
+                # FIXME: maybe should fix values/external values rather
+                # than the reshape hack?
+                d = b.external_values().astype('M8[us]').astype(object)
+                if len(d.shape) == 1:
+                    d = d.reshape((1,) + d.shape)
             else:
                 d = np.array(b.get_values(), dtype=object)
 
