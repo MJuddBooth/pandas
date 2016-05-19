@@ -1183,6 +1183,10 @@ class SQLDatabase(PandasSQL):
         if self.has_table(table_name, schema):
             self.meta.reflect(only=[table_name], schema=schema)
             table = self.get_table(table_name, schema)
+            with table.bind.begin() as conn:
+                #FIXME: There should be a more natural way to properly quote table and schema
+                fullname = ".".join([_get_valid_sqlite_name(x) for x in [table.schema, table.name]])
+                conn.execute("TRUNCATE TABLE {} RESTART IDENTITY".format(fullname))
 
     def _create_sql_schema(self, frame, table_name, keys=None, dtype=None):
         table = SQLTable(table_name, self, frame=frame, index=False, keys=keys,
@@ -1508,8 +1512,8 @@ class SQLiteDatabase(PandasSQL):
 
     def truncate_table(self, name, schema=None):
         escape = _SQL_GET_IDENTIFIER[self.flavor]
-        drop_sql = "TRUNCATE TABLE %s" % escape(name)
-        self.execute(drop_sql)
+        truncate_sql = "TRUNCATE TABLE %s" % escape(name)
+        self.execute(truncate_sql)
 
     def _create_sql_schema(self, frame, table_name, keys=None, dtype=None):
         table = SQLiteTable(table_name, self, frame=frame, index=False,
