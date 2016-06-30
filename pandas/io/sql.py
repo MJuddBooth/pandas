@@ -1181,8 +1181,8 @@ class SQLDatabase(PandasSQL):
             for col, my_type in dtype.items():
                 if not isinstance(to_instance(my_type), TypeEngine):
                     raise ValueError('The type of %s is not a SQLAlchemy '
-                                     'type ' % col)                
-            
+                                     'type ' % col)
+
         table = SQLTable(name, self, frame=frame, index=index,
                          if_exists=if_exists, index_label=index_label,
                          schema=schema, dtype=dtype, keys=keys)
