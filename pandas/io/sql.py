@@ -626,7 +626,13 @@ class SQLTable(PandasObject):
             if b.is_datetime:
                 # convert to microsecond resolution so this yields
                 # datetime.datetime
-                d = b.values.astype('M8[us]').astype(object)
+                d = b.external_values().astype('M8[us]').astype(object)
+                # external_values on DateTimeTZBlock returns
+                # a different shape than it does for 
+                # a regular DateTimeBlock, so fix here, although
+                # probably it should be done on the block object...
+                if len(d.shape) == 1:
+                    d = d.reshape((1,) + d.shape)  
             else:
                 d = np.array(b.get_values(), dtype=object)
 
