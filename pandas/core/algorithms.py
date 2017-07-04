@@ -217,6 +217,11 @@ def factorize(values, sort=False, order=None, na_sentinel=-1, size_hint=None):
     if is_datetimetz:
 
         # reset tz
+        # This does not seem to work with repeated hours. 
+        # There is an ambiguous time, but because the 
+        # values are now unique, the repeated hour is tossed,
+        # so that even calling with ambiuous="infer" will not
+        # help 
         uniques = DatetimeIndex(uniques.astype('M8[ns]')).tz_localize(
             values.tz)
     elif is_datetime:
