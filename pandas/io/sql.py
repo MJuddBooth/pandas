@@ -628,11 +628,11 @@ class SQLTable(PandasObject):
                 # datetime.datetime
                 d = b.external_values().astype('M8[us]').astype(object)
                 # external_values on DateTimeTZBlock returns
-                # a different shape than it does for 
+                # a different shape than it does for
                 # a regular DateTimeBlock, so fix here, although
                 # probably it should be done on the block object...
                 if len(d.shape) == 1:
-                    d = d.reshape((1,) + d.shape)  
+                    d = d.reshape((1,) + d.shape)
             else:
                 d = np.array(b.get_values(), dtype=object)
 

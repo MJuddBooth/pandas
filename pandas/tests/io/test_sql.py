@@ -1380,9 +1380,9 @@ class _TestSQLAlchemy(SQLAlchemyMixIn, PandasSQLTest):
         result = result.drop('index', axis=1)
         # to_sql drops the tz info (which is probably the right thing as
         # the sql standard doesn't provide a way to store the timezone information
-        # "Timestaap with Time Zone" really stores in UTC and returns in 
+        # "Timestaap with Time Zone" really stores in UTC and returns in
         # the timezone of the server.
-        # So, anyway, we need add back the timezone for the comparison... 
+        # So, anyway, we need add back the timezone for the comparison...
         result = result.tz_localize(tz=tz)
         tm.assert_frame_equal(result, df)
 
