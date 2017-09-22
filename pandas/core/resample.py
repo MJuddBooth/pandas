@@ -1399,8 +1399,8 @@ class TimeGrouper(Grouper):
         # thus last bin maybe slightly before the end if the end contains
         # nanosecond part and lead to `Values falls after last bin` error
         binner = labels = date_range(freq=self.freq,
-                                     start=first,
-                                     end=last,
+                                     start=first.tz_localize(None),
+                                     end=last.tz_localize(None),
                                      tz=ax.tz,
                                      name=ax.name,
                                      ambiguous='infer',
