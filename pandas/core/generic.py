@@ -2182,8 +2182,9 @@ class NDFrame(PandasObject, SelectionMixin):
         return packers.to_msgpack(path_or_buf, self, encoding=encoding,
                                   **kwargs)
 
-    def to_sql(self, name, con, schema=None, if_exists='fail', index=True,
-               index_label=None, chunksize=None, dtype=None):
+    def to_sql(self, name, con, flavor='sqlite', schema=None, if_exists='fail',
+               index=True, index_label=None, chunksize=None, dtype=None, keys=None,
+               create_pk=False):
         """
         Write records stored in a DataFrame to a SQL database.
 
@@ -2221,6 +2222,11 @@ class NDFrame(PandasObject, SelectionMixin):
             Specifying the datatype for columns. The keys should be the column
             names and the values should be the SQLAlchemy types or strings for
             the sqlite3 legacy mode.
+        create_pk: bool, default False
+            create the primary key on the table based on the supplied keys
+            argument or inferred from the components of the index.
+        keys: string or listlike, default None
+            column or columns to be used to create a primary key on the table.
 
         Raises
         ------
@@ -2291,9 +2297,10 @@ class NDFrame(PandasObject, SelectionMixin):
         [(1,), (None,), (2,)]
         """
         from pandas.io import sql
-        sql.to_sql(self, name, con, schema=schema, if_exists=if_exists,
-                   index=index, index_label=index_label, chunksize=chunksize,
-                   dtype=dtype)
+        sql.to_sql(self, name, con, flavor=flavor, schema=schema,
+                   if_exists=if_exists, index=index, index_label=index_label,
+                   chunksize=chunksize, dtype=dtype,
+                   keys=keys, create_pk=create_pk)
 
     def to_pickle(self, path, compression='infer',
                   protocol=pkl.HIGHEST_PROTOCOL):
