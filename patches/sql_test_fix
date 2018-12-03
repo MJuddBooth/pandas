@@ -1,0 +1,16 @@
+diff --git a/pandas/io/tests/test_sql.py b/pandas/io/tests/test_sql.py
+index 9a995c17f0445f2a245aa2171bad46080697f2ee..d95b016d1acbf1c705de8841fafe216d748927e6 100644
+--- a/pandas/io/tests/test_sql.py
++++ b/pandas/io/tests/test_sql.py
+@@ -2814,5 +2842,10 @@ class TestXMySQL(MySQLMixIn, tm.TestCase):
+ 
+ 
+ if __name__ == '__main__':
+-    nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],
++    import nose
++    if False:
++        nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],
++                   exit=False)
++    else:
++        nose.runmodule(argv=[__file__, '-vvs'],
+                    exit=False)

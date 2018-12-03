@@ -1,0 +1,133 @@
+From 41e147abfe1df0eaf80c3207f5c2bee5ed0e7e0a Mon Sep 17 00:00:00 2001
+From: Michael Booth <m.judd.booth@gmail.com>
+Date: Thu, 24 Jul 2014 12:38:57 -0400
+Subject: [PATCH 0153/1009] Don't assume the number of id_columns is the width
+ of that data, because we allow the top-level of a multiindex in id_columns. 
+ The old behaviorw worked in some cases, now it should always work.
+
+---
+ pandas/core/reshape.py | 76 +++++++++++++++++++++++++++++++++++++-------------
+ 1 file changed, 56 insertions(+), 20 deletions(-)
+
+diff --git a/pandas/core/reshape.py b/pandas/core/reshape.py
+index a9a1829..522fd5c 100644
+--- a/pandas/core/reshape.py
++++ b/pandas/core/reshape.py
+@@ -771,7 +771,7 @@ def melt(frame, id_vars=None, value_vars=None,
+     return DataFrame(mdata, columns=mcolumns)
+ 
+ def tunamelt(frame, id_vars=None, value_vars=None,
+-         var_name=None, value_name='value', col_level=None):
++         var_name=None, value_name='value', col_level=None, infer_value_name=False):
+     """
+     "Unpivots" a DataFrame from wide format to long format, optionally leaving
+     identifier variables set.
+@@ -797,6 +797,9 @@ def tunamelt(frame, id_vars=None, value_vars=None,
+         Name to use for the 'value' column.
+     col_level : int or string, optional
+         If columns are a MultiIndex then use this level to melt.
++    infer_value_name: bool 
++        if True and there is a unique top-level label for a 
++        MultiIndex use that is value_name
+ 
+     See also
+     --------
+@@ -882,6 +885,39 @@ def tunamelt(frame, id_vars=None, value_vars=None,
+         # frame is a copy
+         frame.columns = frame.columns.get_level_values(col_level)
+ 
++#     if var_name is None:
++#         if isinstance(frame.columns, MultiIndex):
++#             if len(frame.columns.names) == len(set(frame.columns.names)):
++#                 var_name = frame.columns.names
++#             else:
++#                 var_name = ['variable_%s' % i for i in
++#                             range(len(frame.columns.names))]
++#         else:
++#             var_name = [frame.columns.name if frame.columns.name is not None
++#                         else 'variable']
++#     if isinstance(var_name, compat.string_types):
++#         var_name = [var_name]
++
++
++    mdata = {}
++ #   for col in id_vars:
++ #       mdata[col] = np.tile(frame.pop(col).values, K)
++
++    idframe = frame[id_vars]
++    # can't make this work with frame.drop(id_vars, axis=1, inplace=True)
++    for col in id_vars:
++        frame.pop(col)
++    N, K = frame.shape  
++        
++    idframe = DataFrame(np.tile(idframe.values, (K, 1)), columns=idframe.columns)
++
++    if infer_value_name and isinstance(frame.columns, MultiIndex):
++        names = set(frame.columns.get_level_values(0))
++        if len(names) == 1:
++            value_name = names[0]
++            frame.columns = frame.columns.droplevel(0)
++
++    # Nameing of columns, etc
+     if var_name is None:
+         if isinstance(frame.columns, MultiIndex):
+             if len(frame.columns.names) == len(set(frame.columns.names)):
+@@ -892,36 +928,36 @@ def tunamelt(frame, id_vars=None, value_vars=None,
+         else:
+             var_name = [frame.columns.name if frame.columns.name is not None
+                         else 'variable']
++            
+     if isinstance(var_name, compat.string_types):
+         var_name = [var_name]
+-
+-    N, K = frame.shape
+-    K -= len(id_vars)
+-
+-    mdata = {}
+- #   for col in id_vars:
+- #       mdata[col] = np.tile(frame.pop(col).values, K)
+-
+-    idframe = frame[id_vars]
+-    idframe = DataFrame(np.tile(idframe.values, (K, 1)), columns=idframe.columns)
+-
+-    mcolumns = id_vars + var_name + [value_name]
++ 
++            
++    # Of it doesn't make sense to have the top level name become the value_name, 
++    # we may still want to get rid of it - or not.  An example would be a structure
++    # like AAPL -> ( high, low, open, close, volume ).  We don't want AAPL to be 
++    # the value_name, and if that is the only one we may wish to drop it entirely.
++    # But if there are multiple, then there should probably be a column called "Ticker".
++    #
++    # Also note that it may be desired to only partially "melt" such a structure, so that
++    # HLOCV remain as value variables and the upper level of "Ticker" becomes an identifier.
++    # Is there already support for this in pivot or unstack? 
++    # If we go down this path ( melting one level only ) - and again, maybe it's already done -
++    # we need to ensure that the next levels are homogeneous or can be extended to be.  We will 
++    # use some version of reshape and so the data has to be in the form N*M.    
++        
+     datacolumns = var_name + [value_name]
+ 
+-    # can't make this work
+-    # frame.drop(id_vars, axis=1, inplace=True)
+-    for col in id_vars:
+-        frame.pop(col)
+-
+-#    frame = frame.dro
++    #        
+     mdata[value_name] = frame.values.ravel('F')
+     for i, col in enumerate(var_name):
+         # asanyarray will keep the columns as an Index
+         mdata[col] = np.asanyarray(frame.columns.get_level_values(i)).repeat(N)
+     dataframe = DataFrame(mdata, columns=datacolumns)
+     newdf     = idframe.join(dataframe)
++    #TODO: this join probably doesn't work with multi-indexes
+     
+-    return idframe.join(dataframe)
++    return newdf
+ 
+ def lreshape(data, groups, dropna=True, label=None):
+     """
+-- 
+2.6.0
+

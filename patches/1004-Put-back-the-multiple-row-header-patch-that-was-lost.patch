@@ -1,0 +1,36 @@
+From 8e38ebd499f9aa8cd2a1dc26824ff939b4982a0b Mon Sep 17 00:00:00 2001
+From: Michael Booth <m.judd.booth@gmail.com>
+Date: Wed, 8 Apr 2015 21:07:44 -0400
+Subject: [PATCH 1004/1009] Put back the multiple-row header patch that was
+ lost in the last upstream merge.
+
+---
+ pandas/io/excel.py | 12 +++++++++---
+ 1 file changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/pandas/io/excel.py b/pandas/io/excel.py
+index cab342d..c67490f 100644
+--- a/pandas/io/excel.py
++++ b/pandas/io/excel.py
+@@ -418,9 +418,15 @@ class ExcelFile(object):
+                         row.append(_parse_cell(value,typ))
+                 data.append(row)
+     
+-            if header is not None:
+-                data[header] = _trim_excel_header(data[header])
+-    
++            if header is not None:   
++                # handle case where multiple rows are passed (ala read_csv).
++                # But here we cannot loop over rows, because trimming can upset the 
++                # column mapping.
++                if isinstance(header, (list, tuple, np.ndarray)):
++                    data[header[0]] = _trim_excel_header(data[header])
++                else:
++                    data[header] = _trim_excel_header(data[header])
++
+             parser = TextParser(data, header=header, index_col=index_col,
+                                 has_index_names=has_index_names,
+                                 na_values=na_values,
+-- 
+2.6.0
+

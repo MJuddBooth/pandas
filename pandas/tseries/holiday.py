@@ -382,10 +382,10 @@ class AbstractHolidayCalendar(object):
                             'rules specified'.format(name=self.name))
 
         if start is None:
-            start = AbstractHolidayCalendar.start_date
+            start = self.start_date
 
         if end is None:
-            end = AbstractHolidayCalendar.end_date
+            end = self.end_date
 
         start = Timestamp(start)
         end = Timestamp(end)

@@ -1,0 +1,27 @@
+From 2d97366bb20063eba444f69436947eff4cb4a810 Mon Sep 17 00:00:00 2001
+From: Michael Booth <m.judd.booth@gmail.com>
+Date: Mon, 13 Apr 2015 23:28:33 -0400
+Subject: [PATCH 1006/1009] Change the template for group_mean_bin to set
+ bounds_check and wraparound to False like all similar functions.
+
+---
+ pandas/src/generate_code.py | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/pandas/src/generate_code.py b/pandas/src/generate_code.py
+index 575fcf3..2c4217b 100644
+--- a/pandas/src/generate_code.py
++++ b/pandas/src/generate_code.py
+@@ -1569,7 +1569,8 @@ def group_mean_%(name)s(ndarray[%(dest_type2)s, ndim=2] out,
+                 out[i, j] = sumx[i, j] / count
+ """
+ 
+-group_mean_bin_template = """
++group_mean_bin_template = """@cython.boundscheck(False)
++@cython.wraparound(False)
+ def group_mean_bin_%(name)s(ndarray[%(dest_type2)s, ndim=2] out,
+                    ndarray[int64_t] counts,
+                    ndarray[%(dest_type2)s, ndim=2] values,
+-- 
+2.6.0
+

@@ -1,0 +1,38 @@
+From ea4dc48f18b94ec738fc45e6949bb366b9e428a6 Mon Sep 17 00:00:00 2001
+From: Michael Booth <m.judd.booth@gmail.com>
+Date: Wed, 8 Apr 2015 21:13:27 -0400
+Subject: [PATCH 1005/1009] somehow last upstream merge didn't pull in the
+ changes, this file has never been modified locally.
+
+---
+ pandas/__init__.py | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/pandas/__init__.py b/pandas/__init__.py
+index 08e3182..a371ce0 100644
+--- a/pandas/__init__.py
++++ b/pandas/__init__.py
+@@ -27,13 +27,18 @@ except Exception:  # pragma: no cover
+ # numpy versioning
+ from distutils.version import LooseVersion
+ _np_version = np.version.short_version
+-_np_version_under1p6 = LooseVersion(_np_version) < '1.6'
+-_np_version_under1p7 = LooseVersion(_np_version) < '1.7'
+ _np_version_under1p8 = LooseVersion(_np_version) < '1.8'
++_np_version_under1p9 = LooseVersion(_np_version) < '1.9'
+ 
+ from pandas.version import version as __version__
+ from pandas.info import __doc__
+ 
++if LooseVersion(_np_version) < '1.7.0':
++    raise ImportError('pandas {0} is incompatible with numpy < 1.7.0, '
++                      'your numpy version is {1}. Please upgrade numpy to'
++                      ' >= 1.7.0 to use pandas version {0}'.format(__version__,
++                                                                   _np_version))
++
+ # let init-time option registration happen
+ import pandas.core.config_init
+ 
+-- 
+2.6.0
+

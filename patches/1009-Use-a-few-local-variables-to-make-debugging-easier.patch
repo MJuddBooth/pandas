@@ -1,0 +1,44 @@
+From 530b4f41855e8cd7a3415fcf3946f2ea5529ffba Mon Sep 17 00:00:00 2001
+From: Michael Booth <m.judd.booth@gmail.com>
+Date: Sat, 17 Oct 2015 17:23:46 -0400
+Subject: [PATCH 1009/1009] Use a few local variables to make debugging easier.
+
+---
+ pandas/core/groupby.py | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/pandas/core/groupby.py b/pandas/core/groupby.py
+index 6d98b3b..c47b7cd 100644
+--- a/pandas/core/groupby.py
++++ b/pandas/core/groupby.py
+@@ -104,10 +104,11 @@ def _groupby_function(name, alias, npfunc, numeric_only=True,
+     def f(self):
+         self._set_selection_from_grouper()
+         try:
+-            return self._cython_agg_general(alias, numeric_only=numeric_only)
++            result = self._cython_agg_general(alias, numeric_only=numeric_only)
++            return result
+         except AssertionError as e:
+             raise SpecificationError(str(e))
+-        except Exception:
++        except Exception as e:
+             result = self.aggregate(lambda x: npfunc(x, axis=self.axis))
+             if _convert:
+                 result = result.convert_objects()
+@@ -689,10 +690,11 @@ class GroupBy(PandasObject):
+         For multiple groupings, the result index will be a MultiIndex
+         """
+         try:
+-            return self._cython_agg_general('mean')
++            result = self._cython_agg_general('mean')
++            return result
+         except GroupByError:
+             raise
+-        except Exception:  # pragma: no cover
++        except Exception as e:  # pragma: no cover
+             self._set_selection_from_grouper()
+             f = lambda x: x.mean(axis=self.axis)
+             return self._python_agg_general(f)
+-- 
+2.6.0
+

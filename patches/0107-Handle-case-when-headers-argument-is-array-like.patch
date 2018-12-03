@@ -1,0 +1,30 @@
+From e7b52495901502692f1c970f0428bcc5c3c935a7 Mon Sep 17 00:00:00 2001
+From: Michael Booth <m.judd.booth@gmail.com>
+Date: Fri, 11 Jul 2014 15:09:43 -0400
+Subject: [PATCH 0107/1009] Handle case when headers argument is array-like.
+
+---
+ pandas/io/excel.py | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/pandas/io/excel.py b/pandas/io/excel.py
+index f81cf65..ea40910 100644
+--- a/pandas/io/excel.py
++++ b/pandas/io/excel.py
+@@ -329,7 +329,12 @@ class ExcelFile(object):
+             data.append(row)
+ 
+         if header is not None:
+-            data[header] = _trim_excel_header(data[header])
++            if isinstance(header, (list, tuple, np.ndarray)):
++                # don't want to loop - first header row should determine the whole sheet,
++                # which means that the left-most header row should be entry zero.
++                data[header[0]] = _trim_excel_header(data[header[0]])
++            else:
++                data[header] = _trim_excel_header(data[header])
+ 
+         parser = TextParser(data, header=header, index_col=index_col,
+                             has_index_names=has_index_names,
+-- 
+2.6.0
+
