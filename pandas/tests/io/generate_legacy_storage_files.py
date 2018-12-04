@@ -39,14 +39,16 @@ from __future__ import print_function
 from datetime import timedelta
 from distutils.version import LooseVersion
 import os
-import platform as pl
 import sys
+import itertools
+import platform as pl
 
 import numpy as np
 
 from pandas.compat import u
 
 import pandas
+#
 from pandas import (
     Categorical, DataFrame, Index, MultiIndex, NaT, Period, Series,
     SparseDataFrame, SparseSeries, Timestamp, bdate_range, date_range,
@@ -57,6 +59,7 @@ from pandas.tseries.offsets import (
     Easter, Hour, LastWeekOfMonth, Minute, MonthBegin, MonthEnd, QuarterBegin,
     QuarterEnd, SemiMonthBegin, SemiMonthEnd, Week, WeekOfMonth, YearBegin,
     YearEnd)
+
 
 _loose_version = LooseVersion(pandas.__version__)
 
@@ -129,6 +132,7 @@ def create_data():
         from pandas import interval_range
         index['interval'] = interval_range(0, periods=10)
 
+    tdindex = timedelta_range(start='0s', periods=10, freq='1s', name='example')
     mi = dict(reg2=MultiIndex.from_tuples(
         tuple(zip(*[[u'bar', u'bar', u'baz', u'baz', u'foo',
                      u'foo', u'qux', u'qux'],
@@ -155,11 +159,13 @@ def create_data():
                   period=Series([Period('2000Q1')] * 5))
 
     mixed_dup_df = DataFrame(data)
+
     mixed_dup_df.columns = list(u"ABCDA")
     frame = dict(float=DataFrame({u'A': series[u'float'],
                                   u'B': series[u'float'] + 1}),
                  int=DataFrame({u'A': series[u'int'],
                                 u'B': series[u'int'] + 1}),
+                 td_index=DataFrame(np.arange(10), columns=[u'A'], index=tdindex),
                  mixed=DataFrame({k: data[k]
                                   for k in [u'A', u'B', u'C', u'D']}),
                  mi=DataFrame({u'A': np.arange(5).astype(np.float64),
@@ -170,6 +176,24 @@ def create_data():
                                               [u'one', u'two', u'one',
                                                u'two', u'three']])),
                                   names=[u'first', u'second'])),
+                 mixed_index=DataFrame(dict(u'A'=np.arange(5).astype(np.float64),
+                                            u'B'=np.arange(5).astype(np.int64)),
+                                       index=Index([u'One', u'Two', u'Three', 4, 5])),
+                 mixed_cols=DataFrame(dict(u'A'=np.arange(5).astype(np.float64),
+                                           u'B'=np.arange(5).astype(np.int64)),
+                                      index=[1, 2, 3, 4, 5], columns=Index([u'One', 2])),
+                 mi_mixed=DataFrame(dict(u'A'=np.arange(10).astype(np.float64),
+                                         u'B'=np.arange(10).astype(np.int64)),
+                                    index=MultiIndex.from_tuples(
+                                        tuple(itertools.product(date_range("20151101", periods=5),
+                                                                (1, 2))),
+                                        names=[u'date', u'key'])),
+                 mi_mi_mixed=DataFrame({(u'A',1):np.arange(10).astype(np.float64),
+                                        (u'A', 2):np.arange(10).astype(np.int64)},
+                                       index=MultiIndex.from_tuples(
+                                           tuple(itertools.product(date_range("20151101", periods=5),
+                                                                   (1, 2))),
+                                           names=[u'date', u'key'])),
                  dup=DataFrame(np.arange(15).reshape(5, 3).astype(np.float64),
                                columns=[u'A', u'B', u'A']),
                  cat_onecol=DataFrame({u'A': Categorical([u'foo', u'bar'])}),
@@ -185,6 +209,8 @@ def create_data():
                      u'B': Timestamp('20130603', tz='CET'),
                      u'C': Timestamp('20130603', tz='UTC')}, index=range(5))
                  )
+    frame["mi_mixed_t"] = frame["mi_mixed"].T
+    frame["td_column"] = frame["td_index"].T
 
     cat = dict(int8=Categorical(list('abcdefg')),
                int16=Categorical(np.arange(1000)),
@@ -268,6 +294,9 @@ def create_msgpack_data():
         del data['series']['dt_tz']
         del data['frame']['dt_mixed_tzs']
     # Not supported
+    elif LooseVersion(pandas.__version__) > '0.17.0':
+        del data["scalars"]["period"]
+        del data["series"]["period"]
     del data['sp_series']
     del data['sp_frame']
     del data['series']['cat']
@@ -280,14 +309,36 @@ def create_msgpack_data():
     del data['offsets']
     return _u(data)
 
+def create_hdf_data():
+    data = create_data()
+    data = {k:data[k] for k in ['series', 'frame', 'panel']}
 
-def platform_name():
-    return '_'.join([str(pandas.__version__), str(pl.machine()),
-                     str(pl.system().lower()), str(pl.python_version())])
+    del data['series']['cat']
+    del data['frame']['cat_onecol']
+    del data['frame']['cat_and_float']
+    del data['series']['mixed']
+    del data['frame']['mixed_dup']
+    del data['frame']['mi_mi_mixed']
+    del data['frame']['mixed_index']
 
+    return data
 
-def write_legacy_pickles(output_dir):
+def platform_name(version = pandas.__version__):
+    return '_'.join([str(version), str(pl.machine()), str(pl.system().lower()),
+                     str(pl.python_version())])
 
+def get_storage_path(output_dir, storage_format, version = pandas.__version__,
+                     include_platform = True):
+    if include_platform:
+        basepath = os.path.join(output_dir, platform_name(version))
+    else:
+        basepath = os.path.join(output_dir, str(version))
+    filename = basepath + "." + storage_format
+    return basepath, filename
+
+def write_legacy_pickles(output_dir, version, include_platform=True):
+
+    storage_format = "pickle"
     # make sure we are < 0.13 compat (in py3)
     try:
         from pandas.compat import zip, cPickle as pickle  # noqa
@@ -300,42 +351,75 @@ def write_legacy_pickles(output_dir):
           "and python version")
     print("  pandas version: {0}".format(version))
     print("  output dir    : {0}".format(output_dir))
-    print("  storage format: pickle")
+    print("  storage format: {0}".format(storage_format))
 
-    pth = '{0}.pickle'.format(platform_name())
+    basepath, filename = get_storage_path(output_dir, storage_format,
+                                          version=version,
+                                          include_platform=include_platform)
+    if not os.path.exists(basepath): os.makedirs(basepath)
 
-    fh = open(os.path.join(output_dir, pth), 'wb')
-    pickle.dump(create_pickle_data(), fh, pickle.HIGHEST_PROTOCOL)
-    fh.close()
+    with open(filename, 'wb') as fh:
+        pickle.dump(create_pickle_data(), fh, pickle.HIGHEST_PROTOCOL)
 
-    print("created pickle file: %s" % pth)
+    print("created {0} file: {1}".format(storage_format, filename))
 
+def write_legacy_msgpack(output_dir, compress, version, include_platform = True):
 
-def write_legacy_msgpack(output_dir, compress):
-
-    version = pandas.__version__
+    storage_format = "msgpack"
 
     print("This script generates a storage file for the current arch, "
           "system, and python version")
     print("  pandas version: {0}".format(version))
     print("  output dir    : {0}".format(output_dir))
-    print("  storage format: msgpack")
-    pth = '{0}.msgpack'.format(platform_name())
-    to_msgpack(os.path.join(output_dir, pth), create_msgpack_data(),
-               compress=compress)
+    print("  storage format: {0}".format(storage_format))
 
-    print("created msgpack file: %s" % pth)
+    basepath, filename = get_storage_path(output_dir, storage_format,
+                                          version=version,
+                                          include_platform=include_platform)
+    if not os.path.exists(basepath): os.makedirs(basepath)
 
+    to_msgpack(filename, create_msgpack_data(), compress=compress)
+
+    print("created {0} file: {1}".format(storage_format, filename))
+
+def write_legacy_hdf(output_dir, version, include_platform = True):
+
+    storage_format = "hdf"
+
+    print("This script generates a storage file for the current arch, "
+          "system, and python version")
+    print("  pandas version: {0}".format(version))
+    print("  output dir    : {0}".format(output_dir))
+    print("  storage format: {0}".format(storage_format))
+
+    basepath, filename = get_storage_path(output_dir, storage_format,
+                                          version=version,
+                                          include_platform=include_platform)
+    if not os.path.exists(basepath): os.makedirs(basepath)
+
+    data = create_hdf_data()
+    for cat in ['series', 'frame', 'panel']:
+        for kind, df in data[cat].items():
+            fmt = "fixed" if kind == "period" else "table"
+            try:
+                fname = os.path.join(basepath, "{}_{}.h5".format(cat, kind))
+                df.to_hdf(fname, "df", format = fmt)
+            except Exception as e:
+                print("oops, skipped {}_{}: {}".format(cat, kind, e))
+                os.unlink(fname)
+
+    print("created {0} file: {1}".format(storage_format, basepath))
 
 def write_legacy_file():
     # force our cwd to be the first searched
     sys.path.insert(0, '.')
 
-    if not (3 <= len(sys.argv) <= 4):
+    if not (3 <= len(sys.argv) <= 6):
         exit("Specify output directory and storage type: generate_legacy_"
              "storage_files.py <output_dir> <storage_type> "
-             "<msgpack_compress_type>")
+             "<msgpack_compress_type> <version_string> <include_platform>")
 
+    #FIXME: should use argparse
     output_dir = str(sys.argv[1])
     storage_type = str(sys.argv[2])
     try:
@@ -343,12 +427,20 @@ def write_legacy_file():
     except IndexError:
         compress_type = None
 
+    version = pandas.__version__ if len(sys.argv) < 5 else sys.argv[4]
+    include_platform = True if len(sys.argv) < 6 else eval(sys.argv[5])
+
     if storage_type == 'pickle':
-        write_legacy_pickles(output_dir=output_dir)
+        write_legacy_pickles(output_dir=output_dir, version=version,
+                             include_platform=include_platform)
     elif storage_type == 'msgpack':
-        write_legacy_msgpack(output_dir=output_dir, compress=compress_type)
+        write_legacy_msgpack(output_dir=output_dir, compress=compress_type,
+                             version=version, include_platform=include_platform)
+    elif storage_type == 'hdf':
+        write_legacy_hdf(output_dir=output_dir, version=version,
+                         include_platform=include_platform)
     else:
-        exit("storage_type must be one of {'pickle', 'msgpack'}")
+        exit("storage_type must be one of {'pickle', 'msgpack' or 'hdf'}")
 
 
 if __name__ == '__main__':

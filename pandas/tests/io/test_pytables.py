@@ -1,3 +1,5 @@
+
+import shutil
 from contextlib import contextmanager
 import datetime
 from datetime import timedelta
@@ -93,6 +95,23 @@ def ensure_clean_store(path, mode='a', complevel=None, complib=None,
         if mode == 'w' or mode == 'a':
             safe_remove(path)
 
+@contextmanager
+def ensure_copied_store(path, mode='a', complevel=None, complib=None,
+              fletcher32=False):
+    """Copy a store file for non-destructive write testing"""
+
+    try:
+        base = os.path.basename(path)
+        newpath = create_tempfile(base)
+
+        shutil.copy(path, newpath)
+        store = HDFStore(newpath, mode=mode, complevel=complevel,
+                         complib=complib, fletcher32=False)
+        yield store
+    finally:
+        safe_close(store)
+        if mode == 'w' or mode == 'a':
+            safe_remove(newpath)
 
 @contextmanager
 def ensure_clean_path(path):
@@ -4660,6 +4679,102 @@ class TestHDFStore(Base):
             result = store['p']
             assert_frame_equal(result, expected)
 
+    def test_legacy_non_index_axes(self):
+        filename = tm.get_data_path('legacy_hdf/legacy_non_index_axes_0.17.1.h5')
+        with HDFStore(filename, 'r') as store:
+            df_legacy = store.get("df")
+
+        index = pd.date_range(start = Timestamp("2015-11-01 0:00"),
+                              freq = "H", periods = 3, tz = None)
+        columns = MultiIndex(levels=[['A', 'B', 'C', 'D'],
+                                     [1, 2, 3]],
+                             labels=[[0, 0, 0, 1, 1, 2, 2, 3, 3, 3],
+                                     [0, 1, 2, 0, 1, 1, 2, 0, 1, 2]],
+                             names=['alpha', 'num'])
+        data = np.array([index.asi8+i for i in range(10)])
+        df_new  = DataFrame(data.T, columns=columns, index=index)
+
+        tm.assert_frame_equal(df_legacy, df_new)
+        #df_new.to_hdf(filename, "df", format = "table")
+
+    def test_legacy_creation(self):
+        #"""test the stores that would be created by generate_legacy_storage_files
+        import pandas.io.tests.generate_legacy_storage_files as gls
+        data = gls.create_hdf_data()
+        with ensure_clean_store(self.path) as store:
+            for cat in ['series', 'frame', 'panel']:
+                for kind, df in data[cat].items():
+                    fmt = "fixed" if kind == "period" else "table"
+                    key = cat + "/" + kind
+                    if key == "frame/td_column":
+                        _x=1
+                    store.put(key, df, format = fmt)
+                    df_stored = store.get(key)
+                    if cat == "series":
+                        tm.assert_series_equal(df_stored, df)
+                    elif cat == "frame":
+                        tm.assert_frame_equal(df_stored, df)
+                    elif cat == "panel":
+                        tm.assert_panel_equal(df_stored, df)
+
+    def test_legacy_stored(self):
+        #"""Test compatibility reading legacy versions"""
+
+        import pandas.io.tests.generate_legacy_storage_files as gls
+        import glob
+
+        data = gls.create_hdf_data()
+
+        path, _ = gls.get_storage_path(tm.get_data_path("legacy_hdf"), "hdf", "0.17.1", include_platform=False)
+        files = glob.glob(path + "/*.h5")
+
+        assert len(files) > 0, "no files to test in {}. Configuration problem?".format(path)
+
+        for f in files:
+            cat, part = os.path.splitext(os.path.basename(f))[0].split("_", 1)
+            df_stored = read_hdf(f, "df")
+            df_new = data[cat][part]
+            if cat == "series":
+                tm.assert_series_equal(df_stored, df_new)
+            elif cat == "frame":
+                tm.assert_frame_equal(df_stored, df_new)
+            elif cat == "panel":
+                tm.assert_panel_equal(df_stored, df_new)
+            else:
+                raise ValueError("unrecognized data category: " + cat)
+
+    def test_legacy_stored_append(self):
+        #"""Test compatibility reading legacy versions"""
+
+        import pandas.io.tests.generate_legacy_storage_files as gls
+        import glob
+
+        data = gls.create_hdf_data()
+
+        path, _ = gls.get_storage_path(tm.get_data_path("legacy_hdf"), "hdf", "0.17.1", include_platform=False)
+        files = glob.glob(path + "/*.h5")
+
+        assert len(files) > 0, "no files to test in {}. Configuration problem?".format(path)
+
+        for f in files:
+            cat, path = os.path.splitext(os.path.basename(f))[0].split("_", 1)
+            with ensure_copied_store(f) as store:
+                if cat == "panel":
+                    continue # I don't know what a sensible test is for panels
+                if not store.get_storer("df").is_table:
+                    continue
+                df_new = data[cat][path]
+                store.append("df", df_new, dropna=False)
+                df_new2 = df_new.append(df_new)
+                if cat == "series":
+                    tm.assert_series_equal(store["df"], df_new2)
+                elif cat == "frame":
+                    tm.assert_frame_equal(store["df"], df_new2)
+                elif cat == "panel":
+                    tm.assert_panel_equal(store["df"], df_new2)
+                else:
+                    raise ValueError("unrecognized data category: " + cat)
+
 
 class TestHDFComplexValues(Base):
     # GH10447
@@ -5076,3 +5191,19 @@ class TestTimezones(Base):
                 store.append('df', df)
                 result = store.select('df')
                 assert_frame_equal(result, df)
+
+def _test_sort(obj):
+    if isinstance(obj, DataFrame):
+        return obj.reindex(sorted(obj.index))
+    elif isinstance(obj, Panel):
+        return obj.reindex(major=sorted(obj.major_axis))
+    else:
+        raise ValueError('type not supported here')
+
+
+if __name__ == '__main__':
+    import nose
+#     nose.runmodule(argv=[__file__, '-vvs'],
+#                    exit=False)
+    nose.runmodule(argv=[__file__, '-vvs', '-x', '--pdb', '--pdb-failure'],
+                   exit=False)
