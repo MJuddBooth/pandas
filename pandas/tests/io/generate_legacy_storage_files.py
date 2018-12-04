@@ -35,7 +35,7 @@ run under the older AND the newer version.
 """
 
 from __future__ import print_function
-from warnings import catch_warnings
+from warnings import catch_warnings, filterwarnings
 from distutils.version import LooseVersion
 from pandas import (Series, DataFrame, Panel,
                     SparseSeries, SparseDataFrame,
@@ -212,6 +212,7 @@ def create_data():
     frame["td_column"] = frame["td_index"].T
 
     with catch_warnings(record=True):
+        filterwarnings("ignore", "\\nPanel", FutureWarning)
         mixed_dup_panel = Panel({u'ItemA': frame[u'float'],
                                  u'ItemB': frame[u'int']})
         mixed_dup_panel.items = [u'ItemA', u'ItemA']
