@@ -15,6 +15,7 @@ from pandas.core.dtypes.api import is_list_like
 from pandas.compat import range, lrange, lmap, lzip, u, zip, PY3
 from pandas.io.formats.printing import pprint_thing
 import pandas.util.testing as tm
+import pandas.util._test_decorators as td
 
 import numpy as np
 from numpy.random import rand, randn
@@ -24,9 +25,8 @@ from pandas.tests.plotting.common import (TestPlotBase, _check_plot_works,
                                           _skip_if_no_scipy_gaussian_kde,
                                           _ok_for_gaussian_kde)
 
-tm._skip_if_no_mpl()
 
-
+@td.skip_if_no_mpl
 class TestDataFramePlots(TestPlotBase):
 
     def setup_method(self, method):
@@ -39,6 +39,14 @@ class TestDataFramePlots(TestPlotBase):
                                     "B": np.random.uniform(size=20),
                                     "C": np.arange(20) + np.random.uniform(
                                         size=20)})
+
+    def _assert_ytickslabels_visibility(self, axes, expected):
+        for ax, exp in zip(axes, expected):
+            self._check_visible(ax.get_yticklabels(), visible=exp)
+
+    def _assert_xtickslabels_visibility(self, axes, expected):
+        for ax, exp in zip(axes, expected):
+            self._check_visible(ax.get_xticklabels(), visible=exp)
 
     @pytest.mark.slow
     def test_plot(self):
@@ -304,6 +312,29 @@ class TestDataFramePlots(TestPlotBase):
         rs = Series(rs[:, 1], rs[:, 0], dtype=np.int64, name='y')
         tm.assert_series_equal(rs, df.y)
 
+    def test_unsorted_index_lims(self):
+        df = DataFrame({'y': [0., 1., 2., 3.]}, index=[1., 0., 3., 2.])
+        ax = df.plot()
+        xmin, xmax = ax.get_xlim()
+        lines = ax.get_lines()
+        assert xmin <= np.nanmin(lines[0].get_data()[0])
+        assert xmax >= np.nanmax(lines[0].get_data()[0])
+
+        df = DataFrame({'y': [0., 1., np.nan, 3., 4., 5., 6.]},
+                       index=[1., 0., 3., 2., np.nan, 3., 2.])
+        ax = df.plot()
+        xmin, xmax = ax.get_xlim()
+        lines = ax.get_lines()
+        assert xmin <= np.nanmin(lines[0].get_data()[0])
+        assert xmax >= np.nanmax(lines[0].get_data()[0])
+
+        df = DataFrame({'y': [0., 1., 2., 3.], 'z': [91., 90., 93., 92.]})
+        ax = df.plot(x='z', y='y')
+        xmin, xmax = ax.get_xlim()
+        lines = ax.get_lines()
+        assert xmin <= np.nanmin(lines[0].get_data()[0])
+        assert xmax >= np.nanmax(lines[0].get_data()[0])
+
     @pytest.mark.slow
     def test_subplots(self):
         df = DataFrame(np.random.rand(10, 3),
@@ -343,6 +374,57 @@ class TestDataFramePlots(TestPlotBase):
             axes = df.plot(kind=kind, subplots=True, legend=False)
             for ax in axes:
                 assert ax.get_legend() is None
+
+    def test_groupby_boxplot_sharey(self):
+        # https://github.com/pandas-dev/pandas/issues/20968
+        # sharey can now be switched check whether the right
+        # pair of axes is turned on or off
+
+        df = DataFrame({'a': [-1.43, -0.15, -3.70, -1.43, -0.14],
+                        'b': [0.56, 0.84, 0.29, 0.56, 0.85],
+                        'c': [0, 1, 2, 3, 1]},
+                       index=[0, 1, 2, 3, 4])
+
+        # behavior without keyword
+        axes = df.groupby('c').boxplot()
+        expected = [True, False, True, False]
+        self._assert_ytickslabels_visibility(axes, expected)
+
+        # set sharey=True should be identical
+        axes = df.groupby('c').boxplot(sharey=True)
+        expected = [True, False, True, False]
+        self._assert_ytickslabels_visibility(axes, expected)
+
+        # sharey=False, all yticklabels should be visible
+        axes = df.groupby('c').boxplot(sharey=False)
+        expected = [True, True, True, True]
+        self._assert_ytickslabels_visibility(axes, expected)
+
+    def test_groupby_boxplot_sharex(self):
+        # https://github.com/pandas-dev/pandas/issues/20968
+        # sharex can now be switched check whether the right
+        # pair of axes is turned on or off
+
+        df = DataFrame({'a': [-1.43, -0.15, -3.70, -1.43, -0.14],
+                        'b': [0.56, 0.84, 0.29, 0.56, 0.85],
+                        'c': [0, 1, 2, 3, 1]},
+                       index=[0, 1, 2, 3, 4])
+
+        # behavior without keyword
+        axes = df.groupby('c').boxplot()
+        expected = [True, True, True, True]
+        self._assert_xtickslabels_visibility(axes, expected)
+
+        # set sharex=False should be identical
+        axes = df.groupby('c').boxplot(sharex=False)
+        expected = [True, True, True, True]
+        self._assert_xtickslabels_visibility(axes, expected)
+
+        # sharex=True, yticklabels should be visible
+        # only for bottom plots
+        axes = df.groupby('c').boxplot(sharex=True)
+        expected = [False, False, True, True]
+        self._assert_xtickslabels_visibility(axes, expected)
 
     @pytest.mark.slow
     def test_subplots_timeseries(self):
@@ -414,7 +496,8 @@ class TestDataFramePlots(TestPlotBase):
             testdata.plot(y="text")
 
     @pytest.mark.xfail(reason='not support for period, categorical, '
-                       'datetime_mixed_tz')
+                              'datetime_mixed_tz',
+                       strict=True)
     def test_subplots_timeseries_y_axis_not_supported(self):
         """
         This test will fail for:
@@ -652,7 +735,7 @@ class TestDataFramePlots(TestPlotBase):
     def _compare_stacked_y_cood(self, normal_lines, stacked_lines):
         base = np.zeros(len(normal_lines[0].get_data()[1]))
         for nl, sl in zip(normal_lines, stacked_lines):
-            base += nl.get_data()[1]  # get y coodinates
+            base += nl.get_data()[1]  # get y coordinates
             sy = sl.get_data()[1]
             tm.assert_numpy_array_equal(base, sy)
 
@@ -735,14 +818,14 @@ class TestDataFramePlots(TestPlotBase):
         ax = df.plot()
         xmin, xmax = ax.get_xlim()
         lines = ax.get_lines()
-        assert xmin == lines[0].get_data()[0][0]
-        assert xmax == lines[0].get_data()[0][-1]
+        assert xmin <= lines[0].get_data()[0][0]
+        assert xmax >= lines[0].get_data()[0][-1]
 
         ax = df.plot(secondary_y=True)
         xmin, xmax = ax.get_xlim()
         lines = ax.get_lines()
-        assert xmin == lines[0].get_data()[0][0]
-        assert xmax == lines[0].get_data()[0][-1]
+        assert xmin <= lines[0].get_data()[0][0]
+        assert xmax >= lines[0].get_data()[0][-1]
 
         axes = df.plot(secondary_y=True, subplots=True)
         self._check_axes_shape(axes, axes_num=3, layout=(3, 1))
@@ -751,8 +834,8 @@ class TestDataFramePlots(TestPlotBase):
             assert not hasattr(ax, 'right_ax')
             xmin, xmax = ax.get_xlim()
             lines = ax.get_lines()
-            assert xmin == lines[0].get_data()[0][0]
-            assert xmax == lines[0].get_data()[0][-1]
+            assert xmin <= lines[0].get_data()[0][0]
+            assert xmax >= lines[0].get_data()[0][-1]
 
     def test_area_lim(self):
         df = DataFrame(rand(6, 4), columns=['x', 'y', 'z', 'four'])
@@ -763,8 +846,8 @@ class TestDataFramePlots(TestPlotBase):
             xmin, xmax = ax.get_xlim()
             ymin, ymax = ax.get_ylim()
             lines = ax.get_lines()
-            assert xmin == lines[0].get_data()[0][0]
-            assert xmax == lines[0].get_data()[0][-1]
+            assert xmin <= lines[0].get_data()[0][0]
+            assert xmax >= lines[0].get_data()[0][-1]
             assert ymin == 0
 
             ax = _check_plot_works(neg_df.plot.area, stacked=stacked)
@@ -806,6 +889,20 @@ class TestDataFramePlots(TestPlotBase):
         ax = df.plot(kind='bar', color='green')
         self._check_colors(ax.patches[::5], facecolors=['green'] * 5)
         tm.close()
+
+    def test_bar_user_colors(self):
+        df = pd.DataFrame({"A": range(4),
+                           "B": range(1, 5),
+                           "color": ['red', 'blue', 'blue', 'red']})
+        # This should *only* work when `y` is specified, else
+        # we use one color per column
+        ax = df.plot.bar(y='A', color=df['color'])
+        result = [p.get_facecolor() for p in ax.patches]
+        expected = [(1., 0., 0., 1.),
+                    (0., 0., 1., 1.),
+                    (0., 0., 1., 1.),
+                    (1., 0., 0., 1.)]
+        assert result == expected
 
     @pytest.mark.slow
     def test_bar_linewidth(self):
@@ -994,6 +1091,69 @@ class TestDataFramePlots(TestPlotBase):
         self._check_axes_shape(axes, axes_num=1, layout=(1, 1))
 
     @pytest.mark.slow
+    def test_if_scatterplot_colorbar_affects_xaxis_visibility(self):
+        # addressing issue #10611, to ensure colobar does not
+        # interfere with x-axis label and ticklabels with
+        # ipython inline backend.
+        random_array = np.random.random((1000, 3))
+        df = pd.DataFrame(random_array,
+                          columns=['A label', 'B label', 'C label'])
+
+        ax1 = df.plot.scatter(x='A label', y='B label')
+        ax2 = df.plot.scatter(x='A label', y='B label', c='C label')
+
+        vis1 = [vis.get_visible() for vis in
+                ax1.xaxis.get_minorticklabels()]
+        vis2 = [vis.get_visible() for vis in
+                ax2.xaxis.get_minorticklabels()]
+        assert vis1 == vis2
+
+        vis1 = [vis.get_visible() for vis in
+                ax1.xaxis.get_majorticklabels()]
+        vis2 = [vis.get_visible() for vis in
+                ax2.xaxis.get_majorticklabels()]
+        assert vis1 == vis2
+
+        assert (ax1.xaxis.get_label().get_visible() ==
+                ax2.xaxis.get_label().get_visible())
+
+    @pytest.mark.slow
+    def test_if_hexbin_xaxis_label_is_visible(self):
+        # addressing issue #10678, to ensure colobar does not
+        # interfere with x-axis label and ticklabels with
+        # ipython inline backend.
+        random_array = np.random.random((1000, 3))
+        df = pd.DataFrame(random_array,
+                          columns=['A label', 'B label', 'C label'])
+
+        ax = df.plot.hexbin('A label', 'B label', gridsize=12)
+        assert all(vis.get_visible() for vis in
+                   ax.xaxis.get_minorticklabels())
+        assert all(vis.get_visible() for vis in
+                   ax.xaxis.get_majorticklabels())
+        assert ax.xaxis.get_label().get_visible()
+
+    @pytest.mark.slow
+    def test_if_scatterplot_colorbars_are_next_to_parent_axes(self):
+        import matplotlib.pyplot as plt
+        random_array = np.random.random((1000, 3))
+        df = pd.DataFrame(random_array,
+                          columns=['A label', 'B label', 'C label'])
+
+        fig, axes = plt.subplots(1, 2)
+        df.plot.scatter('A label', 'B label', c='C label', ax=axes[0])
+        df.plot.scatter('A label', 'B label', c='C label', ax=axes[1])
+        plt.tight_layout()
+
+        points = np.array([ax.get_position().get_points()
+                           for ax in fig.axes])
+        axes_x_coords = points[:, :, 0]
+        parent_distance = axes_x_coords[1, :] - axes_x_coords[0, :]
+        colorbar_distance = axes_x_coords[3, :] - axes_x_coords[2, :]
+        assert np.isclose(parent_distance,
+                          colorbar_distance, atol=1e-7).all()
+
+    @pytest.mark.slow
     def test_plot_scatter_with_categorical_data(self):
         # GH 16199
         df = pd.DataFrame({'x': [1, 2, 3, 4],
@@ -1125,14 +1285,13 @@ class TestDataFramePlots(TestPlotBase):
             if kind == 'bar':
                 axis = ax.xaxis
                 ax_min, ax_max = ax.get_xlim()
-                min_edge = min([p.get_x() for p in ax.patches])
-                max_edge = max([p.get_x() + p.get_width() for p in ax.patches])
+                min_edge = min(p.get_x() for p in ax.patches)
+                max_edge = max(p.get_x() + p.get_width() for p in ax.patches)
             elif kind == 'barh':
                 axis = ax.yaxis
                 ax_min, ax_max = ax.get_ylim()
-                min_edge = min([p.get_y() for p in ax.patches])
-                max_edge = max([p.get_y() + p.get_height() for p in ax.patches
-                                ])
+                min_edge = min(p.get_y() for p in ax.patches)
+                max_edge = max(p.get_y() + p.get_height() for p in ax.patches)
             else:
                 raise ValueError
 
@@ -1362,8 +1521,8 @@ class TestDataFramePlots(TestPlotBase):
                 check_ax_title=False)
 
     @pytest.mark.slow
+    @td.skip_if_no_scipy
     def test_kde_df(self):
-        tm._skip_if_no_scipy()
         _skip_if_no_scipy_gaussian_kde()
         if not self.mpl_ge_1_5_0:
             pytest.skip("mpl is not supported")
@@ -1386,8 +1545,8 @@ class TestDataFramePlots(TestPlotBase):
         self._check_ax_scales(axes, yaxis='log')
 
     @pytest.mark.slow
+    @td.skip_if_no_scipy
     def test_kde_missing_vals(self):
-        tm._skip_if_no_scipy()
         _skip_if_no_scipy_gaussian_kde()
         if not self.mpl_ge_1_5_0:
             pytest.skip("mpl is not supported")
@@ -1913,8 +2072,8 @@ class TestDataFramePlots(TestPlotBase):
         tm.close()
 
     @pytest.mark.slow
+    @td.skip_if_no_scipy
     def test_kde_colors(self):
-        tm._skip_if_no_scipy()
         _skip_if_no_scipy_gaussian_kde()
         if not self.mpl_ge_1_5_0:
             pytest.skip("mpl is not supported")
@@ -1938,8 +2097,8 @@ class TestDataFramePlots(TestPlotBase):
         self._check_colors(ax.get_lines(), linecolors=rgba_colors)
 
     @pytest.mark.slow
+    @td.skip_if_no_scipy
     def test_kde_colors_and_styles_subplots(self):
-        tm._skip_if_no_scipy()
         _skip_if_no_scipy_gaussian_kde()
         if not self.mpl_ge_1_5_0:
             pytest.skip("mpl is not supported")
@@ -2133,6 +2292,51 @@ class TestDataFramePlots(TestPlotBase):
         df = DataFrame(randn(10, 2))
         with pytest.raises(ValueError):
             df.plot(kind='aasdf')
+
+    @pytest.mark.parametrize("x,y,lbl", [
+        (['B', 'C'], 'A', 'a'),
+        (['A'], ['B', 'C'], ['b', 'c']),
+        ('A', ['B', 'C'], 'badlabel')
+    ])
+    def test_invalid_xy_args(self, x, y, lbl):
+        # GH 18671, 19699 allows y to be list-like but not x
+        df = DataFrame({"A": [1, 2], 'B': [3, 4], 'C': [5, 6]})
+        with pytest.raises(ValueError):
+            df.plot(x=x, y=y, label=lbl)
+
+    @pytest.mark.parametrize("x,y", [
+        ('A', 'B'),
+        (['A'], 'B')
+    ])
+    def test_invalid_xy_args_dup_cols(self, x, y):
+        # GH 18671, 19699 allows y to be list-like but not x
+        df = DataFrame([[1, 3, 5], [2, 4, 6]], columns=list('AAB'))
+        with pytest.raises(ValueError):
+            df.plot(x=x, y=y)
+
+    @pytest.mark.parametrize("x,y,lbl,colors", [
+        ('A', ['B'], ['b'], ['red']),
+        ('A', ['B', 'C'], ['b', 'c'], ['red', 'blue']),
+        (0, [1, 2], ['bokeh', 'cython'], ['green', 'yellow'])
+    ])
+    def test_y_listlike(self, x, y, lbl, colors):
+        # GH 19699: tests list-like y and verifies lbls & colors
+        df = DataFrame({"A": [1, 2], 'B': [3, 4], 'C': [5, 6]})
+        _check_plot_works(df.plot, x='A', y=y, label=lbl)
+
+        ax = df.plot(x=x, y=y, label=lbl, color=colors)
+        assert len(ax.lines) == len(y)
+        self._check_colors(ax.get_lines(), linecolors=colors)
+
+    @pytest.mark.parametrize("x,y,colnames", [
+        (0, 1, ['A', 'B']),
+        (1, 0, [0, 1])
+    ])
+    def test_xy_args_integer(self, x, y, colnames):
+        # GH 20056: tests integer args for xy and checks col names
+        df = DataFrame({"A": [1, 2], 'B': [3, 4]})
+        df.columns = colnames
+        _check_plot_works(df.plot, x=x, y=y)
 
     @pytest.mark.slow
     def test_hexbin_basic(self):
@@ -2405,6 +2609,7 @@ class TestDataFramePlots(TestPlotBase):
 
         tm.close()
 
+    @td.xfail_if_mpl_2_2
     def test_table(self):
         df = DataFrame(np.random.rand(10, 3),
                        index=list(string.ascii_letters[:10]))
@@ -2798,7 +3003,7 @@ class TestDataFramePlots(TestPlotBase):
         Series(rand(10)).plot(ax=cax)
 
         fig, ax = self.plt.subplots()
-        from mpl_toolkits.axes_grid.inset_locator import inset_axes
+        from mpl_toolkits.axes_grid1.inset_locator import inset_axes
         iax = inset_axes(ax, width="30%", height=1., loc=3)
         Series(rand(10)).plot(ax=ax)
         Series(rand(10)).plot(ax=iax)

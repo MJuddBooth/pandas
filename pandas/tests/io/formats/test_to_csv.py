@@ -1,10 +1,63 @@
-from pandas import DataFrame
+# -*- coding: utf-8 -*-
+
+import sys
+
+import pytest
+
 import numpy as np
 import pandas as pd
+
+from pandas import DataFrame
 from pandas.util import testing as tm
 
 
 class TestToCSV(object):
+
+    @pytest.mark.xfail((3, 6, 5) > sys.version_info >= (3, 5),
+                       reason=("Python csv library bug "
+                               "(see https://bugs.python.org/issue32255)"))
+    def test_to_csv_with_single_column(self):
+        # see gh-18676, https://bugs.python.org/issue32255
+        #
+        # Python's CSV library adds an extraneous '""'
+        # before the newline when the NaN-value is in
+        # the first row. Otherwise, only the newline
+        # character is added. This behavior is inconsistent
+        # and was patched in https://bugs.python.org/pull_request4672.
+        df1 = DataFrame([None, 1])
+        expected1 = """\
+""
+1.0
+"""
+        with tm.ensure_clean('test.csv') as path:
+            df1.to_csv(path, header=None, index=None)
+            with open(path, 'r') as f:
+                assert f.read() == expected1
+
+        df2 = DataFrame([1, None])
+        expected2 = """\
+1.0
+""
+"""
+        with tm.ensure_clean('test.csv') as path:
+            df2.to_csv(path, header=None, index=None)
+            with open(path, 'r') as f:
+                assert f.read() == expected2
+
+    def test_to_csv_defualt_encoding(self):
+        # GH17097
+        df = DataFrame({'col': [u"AAAAA", u"ÄÄÄÄÄ", u"ßßßßß", u"聞聞聞聞聞"]})
+
+        with tm.ensure_clean('test.csv') as path:
+            # the default to_csv encoding in Python 2 is ascii, and that in
+            # Python 3 is uft-8.
+            if pd.compat.PY2:
+                # the encoding argument parameter should be utf-8
+                with tm.assert_raises_regex(UnicodeEncodeError, 'ascii'):
+                    df.to_csv(path)
+            else:
+                df.to_csv(path)
+                tm.assert_frame_equal(pd.read_csv(path, index_col=0), df)
 
     def test_to_csv_quotechar(self):
         df = DataFrame({'col': [1, 2]})
@@ -180,7 +233,7 @@ $1$,$2$
                 expected_ymd_sec)
 
     def test_to_csv_multi_index(self):
-        # see gh-6618
+        # GH 6618
         df = DataFrame([1], columns=pd.MultiIndex.from_arrays([[1], [2]]))
 
         exp = ",1\n,2\n0,1\n"
@@ -206,3 +259,95 @@ $1$,$2$
 
         exp = "foo\nbar\n1\n"
         assert df.to_csv(index=False) == exp
+
+    def test_to_csv_string_array_ascii(self):
+        # GH 10813
+        str_array = [{'names': ['foo', 'bar']}, {'names': ['baz', 'qux']}]
+        df = pd.DataFrame(str_array)
+        expected_ascii = '''\
+,names
+0,"['foo', 'bar']"
+1,"['baz', 'qux']"
+'''
+        with tm.ensure_clean('str_test.csv') as path:
+            df.to_csv(path, encoding='ascii')
+            with open(path, 'r') as f:
+                assert f.read() == expected_ascii
+
+    @pytest.mark.xfail(strict=True)
+    def test_to_csv_string_array_utf8(self):
+        # GH 10813
+        str_array = [{'names': ['foo', 'bar']}, {'names': ['baz', 'qux']}]
+        df = pd.DataFrame(str_array)
+        expected_utf8 = '''\
+,names
+0,"[u'foo', u'bar']"
+1,"[u'baz', u'qux']"
+'''
+        with tm.ensure_clean('unicode_test.csv') as path:
+            df.to_csv(path, encoding='utf-8')
+            with open(path, 'r') as f:
+                assert f.read() == expected_utf8
+
+    @tm.capture_stdout
+    def test_to_csv_stdout_file(self):
+        # GH 21561
+        df = pd.DataFrame([['foo', 'bar'], ['baz', 'qux']],
+                          columns=['name_1', 'name_2'])
+        expected_ascii = '''\
+,name_1,name_2
+0,foo,bar
+1,baz,qux
+'''
+        df.to_csv(sys.stdout, encoding='ascii')
+        output = sys.stdout.getvalue()
+        assert output == expected_ascii
+        assert not sys.stdout.closed
+
+    def test_to_csv_write_to_open_file(self):
+        # GH 21696
+        df = pd.DataFrame({'a': ['x', 'y', 'z']})
+        expected = '''\
+manual header
+x
+y
+z
+'''
+        with tm.ensure_clean('test.txt') as path:
+            with open(path, 'w') as f:
+                f.write('manual header\n')
+                df.to_csv(f, header=None, index=None)
+            with open(path, 'r') as f:
+                assert f.read() == expected
+
+    @pytest.mark.parametrize("to_infer", [True, False])
+    @pytest.mark.parametrize("read_infer", [True, False])
+    def test_to_csv_compression(self, compression_only,
+                                read_infer, to_infer):
+        # see gh-15008
+        compression = compression_only
+
+        if compression == "zip":
+            pytest.skip("{compression} is not supported "
+                        "for to_csv".format(compression=compression))
+
+        # We'll complete file extension subsequently.
+        filename = "test."
+
+        if compression == "gzip":
+            filename += "gz"
+        else:
+            # xz --> .xz
+            # bz2 --> .bz2
+            filename += compression
+
+        df = DataFrame({"A": [1]})
+
+        to_compression = "infer" if to_infer else compression
+        read_compression = "infer" if read_infer else compression
+
+        with tm.ensure_clean(filename) as path:
+            df.to_csv(path, compression=to_compression)
+            result = pd.read_csv(path, index_col=0,
+                                 compression=read_compression)
+            tm.assert_frame_equal(result, df)

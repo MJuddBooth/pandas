@@ -43,12 +43,12 @@ class TestPanel(object):
             expected = p.loc[['A', 'C']]
             tm.assert_panel_equal(result, expected)
 
-            # neg indicies
+            # neg indices
             result = p.iloc[[-1, 1], [-1, 1]]
             expected = p.loc[['D', 'B'], ['c', 'b']]
             tm.assert_panel_equal(result, expected)
 
-            # dups indicies
+            # dups indices
             result = p.iloc[[-1, -1, 1], [-1, 1]]
             expected = p.loc[['D', 'D', 'B'], ['c', 'b']]
             tm.assert_panel_equal(result, expected)
@@ -119,7 +119,7 @@ class TestPanel(object):
             df = DataFrame(
                 np.random.randn(
                     len(ind), 5), index=ind, columns=list('ABCDE'))
-            panel = Panel(dict([('frame_' + c, df) for c in list('ABC')]))
+            panel = Panel({'frame_' + c: df for c in list('ABC')})
 
             test2 = panel.loc[:, "2002":"2002-12-31"]
             test1 = panel.loc[:, "2002"]
@@ -149,7 +149,7 @@ class TestPanel(object):
 
             # with an object-like
             # GH 9140
-            class TestObject:
+            class TestObject(object):
 
                 def __str__(self):
                     return "TestObject"

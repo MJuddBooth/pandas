@@ -5,6 +5,8 @@ Tests that the file header is properly handled or inferred
 during parsing for all of the parsers defined in parsers.py
 """
 
+from collections import namedtuple
+
 import pytest
 
 import numpy as np
@@ -105,41 +107,31 @@ R_l0_g3,R_l1_g3,R3C0,R3C1,R3C2
 R_l0_g4,R_l1_g4,R4C0,R4C1,R4C2
 """
 
-        df = self.read_csv(StringIO(data), header=[0, 1, 2, 3], index_col=[
-            0, 1], tupleize_cols=False)
+        df = self.read_csv(StringIO(data), header=[0, 1, 2, 3],
+                           index_col=[0, 1])
         tm.assert_frame_equal(df, expected)
 
         # skipping lines in the header
-        df = self.read_csv(StringIO(data), header=[0, 1, 2, 3], index_col=[
-            0, 1], tupleize_cols=False)
+        df = self.read_csv(StringIO(data), header=[0, 1, 2, 3],
+                           index_col=[0, 1])
         tm.assert_frame_equal(df, expected)
 
         # INVALID OPTIONS
 
-        # no as_recarray
-        with tm.assert_produces_warning(
-                FutureWarning, check_stacklevel=False):
-            pytest.raises(ValueError, self.read_csv,
-                          StringIO(data), header=[0, 1, 2, 3],
-                          index_col=[0, 1], as_recarray=True,
-                          tupleize_cols=False)
-
         # names
         pytest.raises(ValueError, self.read_csv,
                       StringIO(data), header=[0, 1, 2, 3],
-                      index_col=[0, 1], names=['foo', 'bar'],
-                      tupleize_cols=False)
+                      index_col=[0, 1], names=['foo', 'bar'])
 
         # usecols
         pytest.raises(ValueError, self.read_csv,
                       StringIO(data), header=[0, 1, 2, 3],
-                      index_col=[0, 1], usecols=['foo', 'bar'],
-                      tupleize_cols=False)
+                      index_col=[0, 1], usecols=['foo', 'bar'])
 
         # non-numeric index_col
         pytest.raises(ValueError, self.read_csv,
                       StringIO(data), header=[0, 1, 2, 3],
-                      index_col=['foo', 'bar'], tupleize_cols=False)
+                      index_col=['foo', 'bar'])
 
     def test_header_multiindex_common_format(self):
 
@@ -159,6 +151,22 @@ two,7,8,9,10,11,12"""
         result = self.read_csv(StringIO(data), header=[0, 1], index_col=0)
         tm.assert_frame_equal(df, result)
 
+        # to_csv, tuples
+        result = self.read_csv(StringIO(data), skiprows=3,
+                               names=[('a', 'q'), ('a', 'r'), ('a', 's'),
+                                      ('b', 't'), ('c', 'u'), ('c', 'v')],
+                               index_col=0)
+        tm.assert_frame_equal(df, result)
+
+        # to_csv, namedtuples
+        TestTuple = namedtuple('names', ['first', 'second'])
+        result = self.read_csv(
+            StringIO(data), skiprows=3, index_col=0,
+            names=[TestTuple('a', 'q'), TestTuple('a', 'r'),
+                   TestTuple('a', 's'), TestTuple('b', 't'),
+                   TestTuple('c', 'u'), TestTuple('c', 'v')])
+        tm.assert_frame_equal(df, result)
+
         # common
         data = """,a,a,a,b,c,c
 ,q,r,s,t,u,v
@@ -168,6 +176,22 @@ two,7,8,9,10,11,12"""
         result = self.read_csv(StringIO(data), header=[0, 1], index_col=0)
         tm.assert_frame_equal(df, result)
 
+        # common, tuples
+        result = self.read_csv(StringIO(data), skiprows=2,
+                               names=[('a', 'q'), ('a', 'r'), ('a', 's'),
+                                      ('b', 't'), ('c', 'u'), ('c', 'v')],
+                               index_col=0)
+        tm.assert_frame_equal(df, result)
+
+        # common, namedtuples
+        TestTuple = namedtuple('names', ['first', 'second'])
+        result = self.read_csv(
+            StringIO(data), skiprows=2, index_col=0,
+            names=[TestTuple('a', 'q'), TestTuple('a', 'r'),
+                   TestTuple('a', 's'), TestTuple('b', 't'),
+                   TestTuple('c', 'u'), TestTuple('c', 'v')])
+        tm.assert_frame_equal(df, result)
+
         # common, no index_col
         data = """a,a,a,b,c,c
 q,r,s,t,u,v
@@ -175,6 +199,22 @@ q,r,s,t,u,v
 7,8,9,10,11,12"""
 
         result = self.read_csv(StringIO(data), header=[0, 1], index_col=None)
+        tm.assert_frame_equal(df.reset_index(drop=True), result)
+
+        # common, no index_col, tuples
+        result = self.read_csv(StringIO(data), skiprows=2,
+                               names=[('a', 'q'), ('a', 'r'), ('a', 's'),
+                                      ('b', 't'), ('c', 'u'), ('c', 'v')],
+                               index_col=None)
+        tm.assert_frame_equal(df.reset_index(drop=True), result)
+
+        # common, no index_col, namedtuples
+        TestTuple = namedtuple('names', ['first', 'second'])
+        result = self.read_csv(
+            StringIO(data), skiprows=2, index_col=None,
+            names=[TestTuple('a', 'q'), TestTuple('a', 'r'),
+                   TestTuple('a', 's'), TestTuple('b', 't'),
+                   TestTuple('c', 'u'), TestTuple('c', 'v')])
         tm.assert_frame_equal(df.reset_index(drop=True), result)
 
         # malformed case 1
@@ -292,4 +332,31 @@ q,r,s,t,u,v
         data = """a,b,c\n0,1,2\n1,2,3"""
         df = self.read_csv(StringIO(data), header=[0])
         expected = DataFrame({"a": [0, 1], "b": [1, 2], "c": [2, 3]})
+        tm.assert_frame_equal(df, expected)
+
+    def test_mangles_multi_index(self):
+        # See GH 18062
+        data = """A,A,A,B\none,one,one,two\n0,40,34,0.1"""
+        df = self.read_csv(StringIO(data), header=[0, 1])
+        expected = DataFrame([[0, 40, 34, 0.1]],
+                             columns=MultiIndex.from_tuples(
+                                 [('A', 'one'), ('A', 'one.1'),
+                                  ('A', 'one.2'), ('B', 'two')]))
+        tm.assert_frame_equal(df, expected)
+
+        data = """A,A,A,B\none,one,one.1,two\n0,40,34,0.1"""
+        df = self.read_csv(StringIO(data), header=[0, 1])
+        expected = DataFrame([[0, 40, 34, 0.1]],
+                             columns=MultiIndex.from_tuples(
+                                 [('A', 'one'), ('A', 'one.1'),
+                                  ('A', 'one.1.1'), ('B', 'two')]))
+        tm.assert_frame_equal(df, expected)
+
+        data = """A,A,A,B,B\none,one,one.1,two,two\n0,40,34,0.1,0.1"""
+        df = self.read_csv(StringIO(data), header=[0, 1])
+        expected = DataFrame([[0, 40, 34, 0.1, 0.1]],
+                             columns=MultiIndex.from_tuples(
+                                 [('A', 'one'), ('A', 'one.1'),
+                                  ('A', 'one.1.1'), ('B', 'two'),
+                                  ('B', 'two.1')]))
         tm.assert_frame_equal(df, expected)

@@ -133,7 +133,7 @@ class Holiday(object):
             Name of the holiday , defaults to class name
         offset : array of pandas.tseries.offsets or
                 class from pandas.tseries.offsets
-            computes offset from  date
+            computes offset from date
         observance: function
             computes when holiday is given a pandas Timestamp
         days_of_week:
@@ -143,12 +143,11 @@ class Holiday(object):
         Examples
         --------
         >>> from pandas.tseries.holiday import Holiday, nearest_workday
-        >>> from pandas import DateOffset
         >>> from dateutil.relativedelta import MO
         >>> USMemorialDay = Holiday('MemorialDay', month=5, day=24,
-                                    offset=DateOffset(weekday=MO(1)))
+                                    offset=pd.DateOffset(weekday=MO(1)))
         >>> USLaborDay = Holiday('Labor Day', month=9, day=1,
-                            offset=DateOffset(weekday=MO(1)))
+                                offset=pd.DateOffset(weekday=MO(1)))
         >>> July3rd = Holiday('July 3rd', month=7, day=3,)
         >>> NewYears = Holiday('New Years Day', month=1,  day=1,
                                observance=nearest_workday),
@@ -430,7 +429,7 @@ class AbstractHolidayCalendar(object):
 
         if not isinstance(other, list):
             other = [other]
-        other_holidays = dict((holiday.name, holiday) for holiday in other)
+        other_holidays = {holiday.name: holiday for holiday in other}
 
         try:
             base = base.rules
@@ -439,7 +438,7 @@ class AbstractHolidayCalendar(object):
 
         if not isinstance(base, list):
             base = [base]
-        base_holidays = dict([(holiday.name, holiday) for holiday in base])
+        base_holidays = {holiday.name: holiday for holiday in base}
 
         other_holidays.update(base_holidays)
         return list(other_holidays.values())

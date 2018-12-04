@@ -52,13 +52,6 @@ class Styler(object):
     Helps style a DataFrame or Series according to the
     data with HTML and CSS.
 
-    .. versionadded:: 0.17.1
-
-    .. warning::
-        This is a new feature and is under active development.
-        We'll be adding features and possibly making breaking changes in future
-        releases.
-
     Parameters
     ----------
     data: Series or DataFrame
@@ -67,7 +60,7 @@ class Styler(object):
     table_styles: list-like, default None
         list of {selector: (attr, value)} dicts; see Notes
     uuid: str, default None
-        a unique identifier to avoid CSS collisons; generated automatically
+        a unique identifier to avoid CSS collisions; generated automatically
     caption: str, default None
         caption to attach to the table
 
@@ -86,7 +79,7 @@ class Styler(object):
 
     If using in the Jupyter notebook, Styler has defined a ``_repr_html_``
     to automatically render itself. Otherwise call Styler.render to get
-    the genterated HTML.
+    the generated HTML.
 
     CSS classes are attached to the generated HTML
 
@@ -127,7 +120,7 @@ class Styler(object):
         if data.ndim == 1:
             data = data.to_frame()
         if not data.index.is_unique or not data.columns.is_unique:
-            raise ValueError("style is not supported for non-unique indicies.")
+            raise ValueError("style is not supported for non-unique indices.")
 
         self.data = data
         self.index = data.index
@@ -140,6 +133,9 @@ class Styler(object):
             precision = get_option('display.precision')
         self.precision = precision
         self.table_attributes = table_attributes
+        self.hidden_index = False
+        self.hidden_columns = []
+
         # display_funcs maps (row, col) -> formatting function
 
         def default_display_func(x):
@@ -187,6 +183,8 @@ class Styler(object):
         caption = self.caption
         ctx = self.ctx
         precision = self.precision
+        hidden_index = self.hidden_index
+        hidden_columns = self.hidden_columns
         uuid = self.uuid or str(uuid1()).replace("-", "_")
         ROW_HEADING_CLASS = "row_heading"
         COL_HEADING_CLASS = "col_heading"
@@ -201,7 +199,7 @@ class Styler(object):
 
         # for sparsifying a MultiIndex
         idx_lengths = _get_level_lengths(self.index)
-        col_lengths = _get_level_lengths(self.columns)
+        col_lengths = _get_level_lengths(self.columns, hidden_columns)
 
         cell_context = dict()
 
@@ -224,7 +222,7 @@ class Styler(object):
             row_es = [{"type": "th",
                        "value": BLANK_VALUE,
                        "display_value": BLANK_VALUE,
-                       "is_visible": True,
+                       "is_visible": not hidden_index,
                        "class": " ".join([BLANK_CLASS])}] * (n_rlvls - 1)
 
             # ... except maybe the last for columns.names
@@ -236,7 +234,7 @@ class Styler(object):
                            "value": name,
                            "display_value": name,
                            "class": " ".join(cs),
-                           "is_visible": True})
+                           "is_visible": not hidden_index})
 
             if clabels:
                 for c, value in enumerate(clabels[r]):
@@ -259,8 +257,9 @@ class Styler(object):
                     row_es.append(es)
                 head.append(row_es)
 
-        if self.data.index.names and not all(x is None
-                                             for x in self.data.index.names):
+        if (self.data.index.names and
+                com._any_not_none(*self.data.index.names) and
+                not hidden_index):
             index_header_row = []
 
             for c, name in enumerate(self.data.index.names):
@@ -274,7 +273,7 @@ class Styler(object):
                 [{"type": "th",
                   "value": BLANK_VALUE,
                   "class": " ".join([BLANK_CLASS])
-                  }] * len(clabels[0]))
+                  }] * (len(clabels[0]) - len(hidden_columns)))
 
             head.append(index_header_row)
 
@@ -286,7 +285,8 @@ class Styler(object):
                        "row{row}".format(row=r)]
                 es = {
                     "type": "th",
-                    "is_visible": _is_visible(r, c, idx_lengths),
+                    "is_visible": (_is_visible(r, c, idx_lengths) and
+                                   not hidden_index),
                     "value": value,
                     "display_value": value,
                     "id": "_".join(rid[1:]),
@@ -310,7 +310,8 @@ class Styler(object):
                     "value": value,
                     "class": " ".join(cs),
                     "id": "_".join(cs[1:]),
-                    "display_value": formatter(value)
+                    "display_value": formatter(value),
+                    "is_visible": (c not in hidden_columns)
                 })
                 props = []
                 for x in ctx[r, c]:
@@ -324,9 +325,19 @@ class Styler(object):
                                   .format(row=r, col=c)})
             body.append(row_es)
 
+        table_attr = self.table_attributes
+        use_mathjax = get_option("display.html.use_mathjax")
+        if not use_mathjax:
+            table_attr = table_attr or ''
+            if 'class="' in table_attr:
+                table_attr = table_attr.replace('class="',
+                                                'class="tex2jax_ignore ')
+            else:
+                table_attr += ' class="tex2jax_ignore"'
+
         return dict(head=head, cellstyle=cellstyle, body=body, uuid=uuid,
                     precision=precision, table_styles=table_styles,
-                    caption=caption, table_attributes=self.table_attributes)
+                    caption=caption, table_attributes=table_attr)
 
     def format(self, formatter, subset=None):
         """
@@ -363,7 +374,7 @@ class Styler(object):
         >>> df = pd.DataFrame(np.random.randn(4, 2), columns=['a', 'b'])
         >>> df.style.format("{:.2%}")
         >>> df['c'] = ['a', 'b', 'c', 'd']
-        >>> df.style.format({'C': str.upper})
+        >>> df.style.format({'c': str.upper})
         """
         if subset is None:
             row_locs = range(len(self.data))
@@ -394,14 +405,11 @@ class Styler(object):
         return self
 
     def render(self, **kwargs):
-        r"""
-        Render the built up styles to HTML
-
-        .. versionadded:: 0.17.1
+        """Render the built up styles to HTML
 
         Parameters
         ----------
-        **kwargs:
+        `**kwargs`:
             Any additional keyword arguments are passed through
             to ``self.template.render``. This is useful when you
             need to provide additional variables for a custom
@@ -423,7 +431,7 @@ class Styler(object):
         the rendered HTML in the notebook.
 
         Pandas uses the following keys in render. Arguments passed
-        in ``**kwargs`` take precedence, so think carefuly if you want
+        in ``**kwargs`` take precedence, so think carefully if you want
         to override them:
 
         * head
@@ -511,7 +519,9 @@ class Styler(object):
         subset = _non_reducing_slice(subset)
         data = self.data.loc[subset]
         if axis is not None:
-            result = data.apply(func, axis=axis, **kwargs)
+            result = data.apply(func, axis=axis,
+                                result_type='expand', **kwargs)
+            result.columns = data.columns
         else:
             result = func(data, **kwargs)
             if not isinstance(result, pd.DataFrame):
@@ -539,10 +549,8 @@ class Styler(object):
 
     def apply(self, func, axis=0, subset=None, **kwargs):
         """
-        Apply a function column-wise, row-wise, or table-wase,
+        Apply a function column-wise, row-wise, or table-wise,
         updating the HTML representation with the result.
-
-        .. versionadded:: 0.17.1
 
         Parameters
         ----------
@@ -569,7 +577,7 @@ class Styler(object):
         -----
         The output shape of ``func`` should match the input, i.e. if
         ``x`` is the input row, column, or table (depending on ``axis``),
-        then ``func(x.shape) == x.shape`` should be true.
+        then ``func(x).shape == x.shape`` should be true.
 
         This is similar to ``DataFrame.apply``, except that ``axis=None``
         applies the function to the entire DataFrame at once,
@@ -601,8 +609,6 @@ class Styler(object):
         """
         Apply a function elementwise, updating the HTML
         representation with the result.
-
-        .. versionadded:: 0.17.1
 
         Parameters
         ----------
@@ -669,8 +675,6 @@ class Styler(object):
         """
         Set the precision used to render.
 
-        .. versionadded:: 0.17.1
-
         Parameters
         ----------
         precision: int
@@ -687,8 +691,6 @@ class Styler(object):
         Set the table attributes. These are the items
         that show up in the opening ``<table>`` tag in addition
         to to automatic (by default) id.
-
-        .. versionadded:: 0.17.1
 
         Parameters
         ----------
@@ -712,8 +714,6 @@ class Styler(object):
         Export the styles to applied to the current Styler.
         Can be applied to a second style with ``Styler.use``.
 
-        .. versionadded:: 0.17.1
-
         Returns
         -------
         styles: list
@@ -728,8 +728,6 @@ class Styler(object):
         """
         Set the styles on the current Styler, possibly using styles
         from ``Styler.export``.
-
-        .. versionadded:: 0.17.1
 
         Parameters
         ----------
@@ -751,8 +749,6 @@ class Styler(object):
         """
         Set the uuid for a Styler.
 
-        .. versionadded:: 0.17.1
-
         Parameters
         ----------
         uuid: str
@@ -766,9 +762,7 @@ class Styler(object):
 
     def set_caption(self, caption):
         """
-        Se the caption on a Styler
-
-        .. versionadded:: 0.17.1
+        Set the caption on a Styler
 
         Parameters
         ----------
@@ -785,8 +779,6 @@ class Styler(object):
         """
         Set the table styles on a Styler. These are placed in a
         ``<style>`` tag before the generated HTML table.
-
-        .. versionadded:: 0.17.1
 
         Parameters
         ----------
@@ -812,6 +804,40 @@ class Styler(object):
         self.table_styles = table_styles
         return self
 
+    def hide_index(self):
+        """
+        Hide any indices from rendering.
+
+        .. versionadded:: 0.23.0
+
+        Returns
+        -------
+        self : Styler
+        """
+        self.hidden_index = True
+        return self
+
+    def hide_columns(self, subset):
+        """
+        Hide columns from rendering.
+
+        .. versionadded:: 0.23.0
+
+        Parameters
+        ----------
+        subset: IndexSlice
+            An argument to ``DataFrame.loc`` that identifies which columns
+            are hidden.
+
+        Returns
+        -------
+        self : Styler
+        """
+        subset = _non_reducing_slice(subset)
+        hidden_df = self.data.loc[subset]
+        self.hidden_columns = self.columns.get_indexer_for(hidden_df.columns)
+        return self
+
     # -----------------------------------------------------------------------
     # A collection of "builtin" styles
     # -----------------------------------------------------------------------
@@ -825,8 +851,6 @@ class Styler(object):
         """
         Shade the background ``null_color`` for missing values.
 
-        .. versionadded:: 0.17.1
-
         Parameters
         ----------
         null_color: str
@@ -839,13 +863,11 @@ class Styler(object):
         return self
 
     def background_gradient(self, cmap='PuBu', low=0, high=0, axis=0,
-                            subset=None):
+                            subset=None, text_color_threshold=0.408):
         """
         Color the background in a gradient according to
         the data in each column (optionally row).
         Requires matplotlib.
-
-        .. versionadded:: 0.17.1
 
         Parameters
         ----------
@@ -857,6 +879,12 @@ class Styler(object):
             1 or 'columns' for columnwise, 0 or 'index' for rowwise
         subset: IndexSlice
             a valid slice for ``data`` to limit the style application to
+        text_color_threshold: float or int
+            luminance threshold for determining text color. Facilitates text
+            visibility across varying background colors. From 0 to 1.
+            0 = all text is dark colored, 1 = all text is light colored.
+
+            .. versionadded:: 0.24.0
 
         Returns
         -------
@@ -864,38 +892,83 @@ class Styler(object):
 
         Notes
         -----
-        Tune ``low`` and ``high`` to keep the text legible by
-        not using the entire range of the color map. These extend
-        the range of the data by ``low * (x.max() - x.min())``
-        and ``high * (x.max() - x.min())`` before normalizing.
+        Set ``text_color_threshold`` or tune ``low`` and ``high`` to keep the
+        text legible by not using the entire range of the color map. The range
+        of the data is extended by ``low * (x.max() - x.min())`` and ``high *
+        (x.max() - x.min())`` before normalizing.
+
+        Raises
+        ------
+        ValueError
+            If ``text_color_threshold`` is not a value from 0 to 1.
         """
         subset = _maybe_numeric_slice(self.data, subset)
         subset = _non_reducing_slice(subset)
         self.apply(self._background_gradient, cmap=cmap, subset=subset,
-                   axis=axis, low=low, high=high)
+                   axis=axis, low=low, high=high,
+                   text_color_threshold=text_color_threshold)
         return self
 
     @staticmethod
-    def _background_gradient(s, cmap='PuBu', low=0, high=0):
+    def _background_gradient(s, cmap='PuBu', low=0, high=0,
+                             text_color_threshold=0.408):
         """Color background in a range according to the data."""
+        if (not isinstance(text_color_threshold, (float, int)) or
+                not 0 <= text_color_threshold <= 1):
+            msg = "`text_color_threshold` must be a value from 0 to 1."
+            raise ValueError(msg)
+
         with _mpl(Styler.background_gradient) as (plt, colors):
-            rng = s.max() - s.min()
+            smin = s.values.min()
+            smax = s.values.max()
+            rng = smax - smin
             # extend lower / upper bounds, compresses color range
-            norm = colors.Normalize(s.min() - (rng * low),
-                                    s.max() + (rng * high))
-            # matplotlib modifies inplace?
+            norm = colors.Normalize(smin - (rng * low), smax + (rng * high))
+            # matplotlib colors.Normalize modifies inplace?
             # https://github.com/matplotlib/matplotlib/issues/5427
-            normed = norm(s.values)
-            c = [colors.rgb2hex(x) for x in plt.cm.get_cmap(cmap)(normed)]
-            return ['background-color: {color}'.format(color=color)
-                    for color in c]
+            rgbas = plt.cm.get_cmap(cmap)(norm(s.values))
+
+            def relative_luminance(rgba):
+                """
+                Calculate relative luminance of a color.
+
+                The calculation adheres to the W3C standards
+                (https://www.w3.org/WAI/GL/wiki/Relative_luminance)
+
+                Parameters
+                ----------
+                color : rgb or rgba tuple
+
+                Returns
+                -------
+                float
+                    The relative luminance as a value from 0 to 1
+                """
+                r, g, b = (
+                    x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055 ** 2.4)
+                    for x in rgba[:3]
+                )
+                return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+            def css(rgba):
+                dark = relative_luminance(rgba) < text_color_threshold
+                text_color = '#f1f1f1' if dark else '#000000'
+                return 'background-color: {b};color: {c};'.format(
+                    b=colors.rgb2hex(rgba), c=text_color
+                )
+
+            if s.ndim == 1:
+                return [css(rgba) for rgba in rgbas]
+            else:
+                return pd.DataFrame(
+                    [[css(rgba) for rgba in row] for row in rgbas],
+                    index=s.index, columns=s.columns
+                )
 
     def set_properties(self, subset=None, **kwargs):
         """
-        Convience method for setting one or more non-data dependent
+        Convenience method for setting one or more non-data dependent
         properties or each cell.
-
-        .. versionadded:: 0.17.1
 
         Parameters
         ----------
@@ -1031,10 +1104,9 @@ class Styler(object):
     def bar(self, subset=None, axis=0, color='#d65f5f', width=100,
             align='left'):
         """
-        Color the background ``color`` proptional to the values in each column.
+        Color the background ``color`` proportional to the values in each
+        column.
         Excludes non-numeric data by default.
-
-        .. versionadded:: 0.17.1
 
         Parameters
         ----------
@@ -1096,8 +1168,6 @@ class Styler(object):
         """
         Highlight the maximum by shading the background
 
-        .. versionadded:: 0.17.1
-
         Parameters
         ----------
         subset: IndexSlice, default None
@@ -1117,8 +1187,6 @@ class Styler(object):
     def highlight_min(self, subset=None, color='yellow', axis=0):
         """
         Highlight the minimum by shading the background
-
-        .. versionadded:: 0.17.1
 
         Parameters
         ----------
@@ -1198,31 +1266,48 @@ def _is_visible(idx_row, idx_col, lengths):
     return (idx_col, idx_row) in lengths
 
 
-def _get_level_lengths(index):
+def _get_level_lengths(index, hidden_elements=None):
     """
-    Given an index, find the level lenght for each element.
+    Given an index, find the level length for each element.
+    Optional argument is a list of index positions which
+    should not be visible.
 
     Result is a dictionary of (level, inital_position): span
     """
     sentinel = com.sentinel_factory()
     levels = index.format(sparsify=sentinel, adjoin=False, names=False)
 
-    if index.nlevels == 1:
-        return {(0, i): 1 for i, value in enumerate(levels)}
+    if hidden_elements is None:
+        hidden_elements = []
 
     lengths = {}
+    if index.nlevels == 1:
+        for i, value in enumerate(levels):
+            if(i not in hidden_elements):
+                lengths[(0, i)] = 1
+        return lengths
 
     for i, lvl in enumerate(levels):
         for j, row in enumerate(lvl):
             if not get_option('display.multi_sparse'):
                 lengths[(i, j)] = 1
-            elif row != sentinel:
+            elif (row != sentinel) and (j not in hidden_elements):
                 last_label = j
                 lengths[(i, last_label)] = 1
-            else:
+            elif (row != sentinel):
+                # even if its hidden, keep track of it in case
+                # length >1 and later elements are visible
+                last_label = j
+                lengths[(i, last_label)] = 0
+            elif(j not in hidden_elements):
                 lengths[(i, last_label)] += 1
 
-    return lengths
+    non_zero_lengths = {}
+    for element, length in lengths.items():
+        if(length >= 1):
+            non_zero_lengths[element] = length
+
+    return non_zero_lengths
 
 
 def _maybe_wrap_formatter(formatter):

@@ -11,32 +11,33 @@ Where to start?
 ===============
 
 All contributions, bug reports, bug fixes, documentation improvements,
-enhancements and ideas are welcome.
+enhancements, and ideas are welcome.
 
-If you are simply looking to start working with the *pandas* codebase, navigate to the
-`GitHub "issues" tab <https://github.com/pandas-dev/pandas/issues>`_ and start looking through
-interesting issues.  There are a number of issues listed under `Docs
+If you are brand new to pandas or open-source development, we recommend going
+through the `GitHub "issues" tab <https://github.com/pandas-dev/pandas/issues>`_
+to find issues that interest you. There are a number of issues listed under `Docs
 <https://github.com/pandas-dev/pandas/issues?labels=Docs&sort=updated&state=open>`_
-and `Difficulty Novice
-<https://github.com/pandas-dev/pandas/issues?q=is%3Aopen+is%3Aissue+label%3A%22Difficulty+Novice%22>`_
-where you could start out.
-
-Or maybe through using *pandas* you have an idea of your own or are looking for something
-in the documentation and thinking 'this can be improved'...you can do something
-about it!
+and `good first issue
+<https://github.com/pandas-dev/pandas/issues?labels=good+first+issue&sort=updated&state=open>`_
+where you could start out. Once you've found an interesting issue, you can
+return here to get your development environment setup.
 
 Feel free to ask questions on the `mailing list
-<https://groups.google.com/forum/?fromgroups#!forum/pydata>`_ or on `Gitter
-<https://gitter.im/pydata/pandas>`_.
+<https://groups.google.com/forum/?fromgroups#!forum/pydata>`_ or on `Gitter`_.
+
+.. _contributing.bug_reports:
 
 Bug reports and enhancement requests
 ====================================
 
-Bug reports are an important part of making *pandas* more stable.  Having a complete bug report
-will allow others to reproduce the bug and provide insight into fixing.  Because many versions of
-*pandas* are supported, knowing version information will also identify improvements made since
-previous versions. Trying the bug-producing code out on the *master* branch is often a worthwhile exercise
-to confirm the bug still exists.  It is also worth searching existing bug reports and pull requests
+Bug reports are an important part of making *pandas* more stable. Having a complete bug report
+will allow others to reproduce the bug and provide insight into fixing. See
+`this stackoverflow article <https://stackoverflow.com/help/mcve>`_ and
+`this blogpost <http://matthewrocklin.com/blog/work/2018/02/28/minimal-bug-reports>`_
+for tips on writing a good bug report.
+
+Trying the bug-producing code out on the *master* branch is often a worthwhile exercise
+to confirm the bug still exists. It is also worth searching existing bug reports and pull requests
 to see if the issue has already been reported and/or fixed.
 
 Bug reports must:
@@ -60,11 +61,15 @@ Bug reports must:
 
 The issue will then show up to the *pandas* community and be open to comments/ideas from others.
 
+.. _contributing.github:
+
 Working with the code
 =====================
 
 Now that you have an issue you want to fix, enhancement to add, or documentation to improve,
 you need to learn how to work with GitHub and the *pandas* code base.
+
+.. _contributing.version_control:
 
 Version control, Git, and GitHub
 --------------------------------
@@ -101,12 +106,128 @@ You will need your own fork to work on the code. Go to the `pandas project
 page <https://github.com/pandas-dev/pandas>`_ and hit the ``Fork`` button. You will
 want to clone your fork to your machine::
 
-    git clone git@github.com:your-user-name/pandas.git pandas-yourname
+    git clone https://github.com/your-user-name/pandas.git pandas-yourname
     cd pandas-yourname
-    git remote add upstream git://github.com/pandas-dev/pandas.git
+    git remote add upstream https://github.com/pandas-dev/pandas.git
 
 This creates the directory `pandas-yourname` and connects your repository to
 the upstream (main project) *pandas* repository.
+
+.. _contributing.dev_env:
+
+Creating a development environment
+----------------------------------
+
+To test out code changes, you'll need to build pandas from source, which
+requires a C compiler and Python environment. If you're making documentation
+changes, you can skip to :ref:`contributing.documentation` but you won't be able
+to build the documentation locally before pushing your changes.
+
+.. _contributiong.dev_c:
+
+Installing a C Compiler
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Pandas uses C extensions (mostly written using Cython) to speed up certain
+operations. To install pandas from source, you need to compile these C
+extensions, which means you need a C compiler. This process depends on which
+platform you're using. Follow the `CPython contributing guidelines
+<https://docs.python.org/devguide/setup.html#build-dependencies>`_ for getting a
+compiler installed. You don't need to do any of the ``./configure`` or ``make``
+steps; you only need to install the compiler.
+
+For Windows developers, the following links may be helpful.
+
+* https://blogs.msdn.microsoft.com/pythonengineering/2016/04/11/unable-to-find-vcvarsall-bat/
+* https://github.com/conda/conda-recipes/wiki/Building-from-Source-on-Windows-32-bit-and-64-bit
+* https://cowboyprogrammer.org/building-python-wheels-for-windows/
+* https://blog.ionelmc.ro/2014/12/21/compiling-python-extensions-on-windows/
+* https://support.enthought.com/hc/en-us/articles/204469260-Building-Python-extensions-with-Canopy
+
+Let us know if you have any difficulties by opening an issue or reaching out on
+`Gitter`_.
+
+.. _contributiong.dev_python:
+
+Creating a Python Environment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Now that you have a C compiler, create an isolated pandas development
+environment:
+
+* Install either `Anaconda <https://www.anaconda.com/download/>`_ or `miniconda
+  <https://conda.io/miniconda.html>`_
+* Make sure your conda is up to date (``conda update conda``)
+* Make sure that you have :ref:`cloned the repository <contributing.forking>`
+* ``cd`` to the *pandas* source directory
+
+We'll now kick off a three-step process:
+
+1. Install the build dependencies
+2. Build and install pandas
+3. Install the optional dependencies
+
+.. code-block:: none
+
+   # Create and activate the build environment
+   conda env create -f ci/environment-dev.yaml
+   conda activate pandas-dev
+
+   # or with older versions of Anaconda:
+   source activate pandas-dev
+
+   # Build and install pandas
+   python setup.py build_ext --inplace -j 4
+   python -m pip install -e .
+
+   # Install the rest of the optional dependencies
+   conda install -c defaults -c conda-forge --file=ci/requirements-optional-conda.txt
+
+At this point you should be able to import pandas from your locally built version::
+
+   $ python  # start an interpreter
+   >>> import pandas
+   >>> print(pandas.__version__)
+   0.22.0.dev0+29.g4ad6d4d74
+
+This will create the new environment, and not touch any of your existing environments,
+nor any existing Python installation.
+
+To view your environments::
+
+      conda info -e
+
+To return to your root environment::
+
+      conda deactivate
+
+See the full conda docs `here <http://conda.pydata.org/docs>`__.
+
+.. _contributing.pip:
+
+Creating a Python Environment (pip)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you aren't using conda for you development environment, follow these instructions.
+You'll need to have at least python3.5 installed on your system.
+
+.. code-block:: none
+
+   # Create a virtual environment
+   # Use an ENV_DIR of your choice. We'll use ~/virtualenvs/pandas-dev
+   # Any parent directories should already exist
+   python3 -m venv ~/virtualenvs/pandas-dev
+   # Activate the virtulaenv
+   . ~/virtualenvs/pandas-dev/bin/activate
+
+   # Install the build dependencies
+   python -m pip install -r ci/requirements_dev.txt
+   # Build and install pandas
+   python setup.py build_ext --inplace -j 4
+   python -m pip install -e .
+
+   # Install additional dependencies
+   python -m pip install -r ci/requirements-optional-pip.txt
 
 Creating a branch
 -----------------
@@ -126,144 +247,29 @@ changes in this branch specific to one bug or feature so it is clear
 what the branch brings to *pandas*. You can have many shiny-new-features
 and switch in between them using the git checkout command.
 
-To update this branch, you need to retrieve the changes from the master branch::
+When creating this branch, make sure your master branch is up to date with
+the latest upstream master version. To update your local master branch, you
+can do::
 
-    git fetch upstream
-    git rebase upstream/master
+    git checkout master
+    git pull upstream master --ff-only
 
-This will replay your commits on top of the latest pandas git master.  If this
-leads to merge conflicts, you must resolve these before submitting your pull
-request.  If you have uncommitted changes, you will need to ``stash`` them prior
-to updating.  This will effectively store your changes and they can be reapplied
-after updating.
-
-.. _contributing.dev_env:
-
-Creating a development environment
-----------------------------------
-
-An easy way to create a *pandas* development environment is as follows.
-
-- Install either :ref:`Anaconda <install.anaconda>` or :ref:`miniconda <install.miniconda>`
-- Make sure that you have :ref:`cloned the repository <contributing.forking>`
-- ``cd`` to the *pandas* source directory
-
-Tell conda to create a new environment, named ``pandas_dev``, or any other name you would like
-for this environment, by running::
-
-      conda create -n pandas_dev --file ci/requirements_dev.txt
-
-
-For a python 3 environment::
-
-      conda create -n pandas_dev python=3 --file ci/requirements_dev.txt
-
-.. warning::
-
-   If you are on Windows, see :ref:`here for a fully compliant Windows environment <contributing.windows>`.
-
-This will create the new environment, and not touch any of your existing environments,
-nor any existing python installation. It will install all of the basic dependencies of
-*pandas*, as well as the development and testing tools. If you would like to install
-other dependencies, you can install them as follows::
-
-      conda install -n pandas_dev -c pandas pytables scipy
-
-To install *all* pandas dependencies you can do the following::
-
-      conda install -n pandas_dev -c conda-forge --file ci/requirements_all.txt
-
-To work in this environment, Windows users should ``activate`` it as follows::
-
-      activate pandas_dev
-
-Mac OSX / Linux users should use::
-
-      source activate pandas_dev
-
-You will then see a confirmation message to indicate you are in the new development environment.
-
-To view your environments::
-
-      conda info -e
-
-To return to your home root environment in Windows::
-
-      deactivate
-
-To return to your home root environment in OSX / Linux::
-
-      source deactivate
-
-See the full conda docs `here <http://conda.pydata.org/docs>`__.
-
-At this point you can easily do an *in-place* install, as detailed in the next section.
-
-.. _contributing.windows:
-
-Creating a Windows development environment
-------------------------------------------
-
-To build on Windows, you need to have compilers installed to build the extensions. You will need to install the appropriate Visual Studio compilers, VS 2008 for Python 2.7, VS 2010 for 3.4, and VS 2015 for Python 3.5 and 3.6.
-
-For Python 2.7, you can install the ``mingw`` compiler which will work equivalently to VS 2008::
-
-      conda install -n pandas_dev libpython
-
-or use the `Microsoft Visual Studio VC++ compiler for Python <https://www.microsoft.com/en-us/download/details.aspx?id=44266>`__. Note that you have to check the ``x64`` box to install the ``x64`` extension building capability as this is not installed by default.
-
-For Python 3.4, you can download and install the `Windows 7.1 SDK <https://www.microsoft.com/en-us/download/details.aspx?id=8279>`__. Read the references below as there may be various gotchas during the installation.
-
-For Python 3.5 and 3.6, you can download and install the `Visual Studio 2015 Community Edition <https://www.visualstudio.com/en-us/downloads/visual-studio-2015-downloads-vs.aspx>`__.
-
-Here are some references and blogs:
-
-- https://blogs.msdn.microsoft.com/pythonengineering/2016/04/11/unable-to-find-vcvarsall-bat/
-- https://github.com/conda/conda-recipes/wiki/Building-from-Source-on-Windows-32-bit-and-64-bit
-- https://cowboyprogrammer.org/building-python-wheels-for-windows/
-- https://blog.ionelmc.ro/2014/12/21/compiling-python-extensions-on-windows/
-- https://support.enthought.com/hc/en-us/articles/204469260-Building-Python-extensions-with-Canopy
-
-.. _contributing.getting_source:
-
-Making changes
---------------
-
-Before making your code changes, it is often necessary to build the code that was
-just checked out.  There are two primary methods of doing this.
-
-#. The best way to develop *pandas* is to build the C extensions in-place by
-   running::
-
-      python setup.py build_ext --inplace
-
-   If you startup the Python interpreter in the *pandas* source directory you
-   will call the built C extensions
-
-#. Another very common option is to do a ``develop`` install of *pandas*::
-
-      python setup.py develop
-
-   This makes a symbolic link that tells the Python interpreter to import *pandas*
-   from your development directory. Thus, you can always be using the development
-   version on your system without being inside the clone directory.
-
+When you want to update the feature branch with changes in master after
+you created the branch, check the section on
+:ref:`updating a PR <contributing.update-pr>`.
 
 .. _contributing.documentation:
 
 Contributing to the documentation
 =================================
 
-If you're not the developer type, contributing to the documentation is still
-of huge value. You don't even have to be an expert on
-*pandas* to do so! Something as simple as rewriting small passages for clarity
-as you reference the docs is a simple but effective way to contribute. The
-next person to read that passage will be in your debt!
-
-In fact, there are sections of the docs that are worse off after being written
-by experts. If something in the docs doesn't make sense to you, updating the
-relevant section after you figure it out is a simple way to ensure it will
-help the next person.
+Contributing to the documentation benefits everyone who uses *pandas*.
+We encourage you to help us improve the documentation, and
+you don't have to be an expert on *pandas* to do so! In fact,
+there are sections of the docs that are worse off after being written by
+experts. If something in the docs doesn't make sense to you, updating the
+relevant section after you figure it out is a great way to ensure it will help
+the next person.
 
 .. contents:: Documentation:
    :local:
@@ -280,7 +286,7 @@ complex changes to the documentation as well.
 
 Some other important things to know about the docs:
 
-- The *pandas* documentation consists of two parts: the docstrings in the code
+* The *pandas* documentation consists of two parts: the docstrings in the code
   itself and the docs in this folder ``pandas/doc/``.
 
   The docstrings provide a clear explanation of the usage of the individual
@@ -288,14 +294,16 @@ Some other important things to know about the docs:
   overviews per topic together with some other information (what's new,
   installation, etc).
 
-- The docstrings follow the **Numpy Docstring Standard**, which is used widely
-  in the Scientific Python community. This standard specifies the format of
-  the different sections of the docstring. See `this document
-  <https://github.com/numpy/numpy/blob/master/doc/HOWTO_DOCUMENT.rst.txt>`_
-  for a detailed explanation, or look at some of the existing functions to
-  extend it in a similar manner.
+* The docstrings follow a pandas convention, based on the **Numpy Docstring
+  Standard**. Follow the :ref:`pandas docstring guide <docstring>` for detailed
+  instructions on how to write a correct docstring.
 
-- The tutorials make heavy use of the `ipython directive
+  .. toctree::
+     :maxdepth: 2
+
+     contributing_docstring.rst
+
+* The tutorials make heavy use of the `ipython directive
   <http://matplotlib.org/sampledoc/ipython_directive.html>`_ sphinx extension.
   This directive lets you put code in the documentation which will be run
   during the doc build. For example::
@@ -316,6 +324,27 @@ Some other important things to know about the docs:
   doc build. This approach means that code examples will always be up to date,
   but it does make the doc building a bit more complex.
 
+* Our API documentation in ``doc/source/api.rst`` houses the auto-generated
+  documentation from the docstrings. For classes, there are a few subtleties
+  around controlling which methods and attributes have pages auto-generated.
+
+  We have two autosummary templates for classes.
+
+  1. ``_templates/autosummary/class.rst``. Use this when you want to
+     automatically generate a page for every public method and attribute on the
+     class. The ``Attributes`` and ``Methods`` sections will be automatically
+     added to the class' rendered documentation by numpydoc. See ``DataFrame``
+     for an example.
+
+  2. ``_templates/autosummary/class_without_autosummary``. Use this when you
+     want to pick a subset of methods / attributes to auto-generate pages for.
+     When using this template, you should include an ``Attributes`` and
+     ``Methods`` section in the class docstring. See ``CategoricalIndex`` for an
+     example.
+
+  Every method should be included in a ``toctree`` in ``api.rst``, else Sphinx
+  will emit a warning.
+
 .. note::
 
     The ``.rst`` files are used to automatically generate Markdown and HTML versions
@@ -326,12 +355,39 @@ Some other important things to know about the docs:
 
       pandoc doc/source/contributing.rst -t markdown_github > CONTRIBUTING.md
 
-The utility script ``scripts/api_rst_coverage.py`` can be used to compare
-the list of methods documented in ``doc/source/api.rst`` (which is used to generate
+The utility script ``scripts/validate_docstrings.py`` can be used to get a csv
+summary of the API documentation. And also validate common errors in the docstring
+of a specific class, function or method. The summary also compares the list of
+methods documented in ``doc/source/api.rst`` (which is used to generate
 the `API Reference <http://pandas.pydata.org/pandas-docs/stable/api.html>`_ page)
 and the actual public methods.
-This will identify methods documented in in ``doc/source/api.rst`` that are not actually
+This will identify methods documented in ``doc/source/api.rst`` that are not actually
 class methods, and existing methods that are not documented in ``doc/source/api.rst``.
+
+
+Updating a *pandas* docstring
+-----------------------------
+
+When improving a single function or method's docstring, it is not necessarily
+needed to build the full documentation (see next section).
+However, there is a script that checks a docstring (for example for the ``DataFrame.mean`` method)::
+
+    python scripts/validate_docstrings.py pandas.DataFrame.mean
+
+This script will indicate some formatting errors if present, and will also
+run and test the examples included in the docstring.
+Check the :ref:`pandas docstring guide <docstring>` for a detailed guide
+on how to format the docstring.
+
+The examples in the docstring ('doctests') must be valid Python code,
+that in a deterministic way returns the presented output, and that can be
+copied and run by users. This can be checked with the script above, and is
+also tested on Travis. A failing doctest will be a blocker for merging a PR.
+Check the :ref:`examples <docstring.examples>` section in the docstring guide
+for some tips and tricks to get the doctests passing.
+
+When doing a PR with a docstring update, it is good to post the
+output of the validation script in a comment on github.
 
 
 How to build the *pandas* documentation
@@ -342,30 +398,6 @@ Requirements
 
 First, you need to have a development environment to be able to build pandas
 (see the docs on :ref:`creating a development environment above <contributing.dev_env>`).
-Further, to build the docs, there are some extra requirements: you will need to
-have ``sphinx`` and ``ipython`` installed. `numpydoc
-<https://github.com/numpy/numpydoc>`_ is used to parse the docstrings that
-follow the Numpy Docstring Standard (see above), but you don't need to install
-this because a local copy of numpydoc is included in the *pandas* source
-code. `nbsphinx <https://nbsphinx.readthedocs.io/>`_ is required to build
-the Jupyter notebooks included in the documentation.
-
-If you have a conda environment named ``pandas_dev``, you can install the extra
-requirements with::
-
-      conda install -n pandas_dev sphinx ipython nbconvert nbformat
-      conda install -n pandas_dev -c conda-forge nbsphinx
-
-Furthermore, it is recommended to have all :ref:`optional dependencies <install.optional_dependencies>`.
-installed. This is not strictly necessary, but be aware that you will see some error
-messages when building the docs. This happens because all the code in the documentation
-is executed during the doc build, and so code examples using optional dependencies
-will generate errors. Run ``pd.show_versions()`` to get an overview of the installed
-version of all dependencies.
-
-.. warning::
-
-   You need to have ``sphinx`` version >= 1.3.2.
 
 Building the documentation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -386,15 +418,12 @@ If you want to do a full clean build, do::
     python make.py clean
     python make.py html
 
-Starting with *pandas* 0.13.1 you can tell ``make.py`` to compile only a single section
-of the docs, greatly reducing the turn-around time for checking your changes.
-You will be prompted to delete ``.rst`` files that aren't required. This is okay because
-the prior versions of these files can be checked out from git. However, you must make sure
-not to commit the file deletions to your Git repository!
+You can tell ``make.py`` to compile only a single section of the docs, greatly
+reducing the turn-around time for checking your changes.
 
 ::
 
-    #omit autosummary and API section
+    # omit autosummary and API section
     python make.py clean
     python make.py --no-api
 
@@ -403,10 +432,20 @@ not to commit the file deletions to your Git repository!
     python make.py clean
     python make.py --single indexing
 
-For comparison, a full documentation build may take 10 minutes, a ``-no-api`` build
-may take 3 minutes and a single section may take 15 seconds.  Subsequent builds, which
-only process portions you have changed, will be faster. Open the following file in a web
-browser to see the full documentation you just built::
+    # compile the reference docs for a single function
+    python make.py clean
+    python make.py --single DataFrame.join
+
+For comparison, a full documentation build may take 15 minutes, but a single
+section may take 15 seconds. Subsequent builds, which only process portions
+you have changed, will be faster.
+
+You can also specify to use multiple cores to speed up the documentation build::
+
+    python make.py html --num-jobs 4
+
+Open the following file in a web browser to see the full documentation you
+just built::
 
     pandas/docs/build/html/index.html
 
@@ -421,6 +460,27 @@ When pull requests are merged into the *pandas* ``master`` branch, the main part
 the documentation are also built by Travis-CI. These docs are then hosted `here
 <http://pandas-docs.github.io/pandas-docs-travis>`__, see also
 the :ref:`Continuous Integration <contributing.ci>` section.
+
+Spell checking documentation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When contributing to documentation to **pandas** it's good to check if your work
+contains any spelling errors. Sphinx provides an easy way to spell check documentation
+and docstrings.
+
+Running the spell check is easy. Just navigate to your local ``pandas/doc/`` directory and run::
+
+    python make.py spellcheck
+
+The spellcheck will take a few minutes to run (between 1 to 6 minutes). Sphinx will alert you
+with warnings and misspelt words - these misspelt words will be added to a file called
+``output.txt`` and you can find it on your local directory ``pandas/doc/build/spelling/``.
+
+The Sphinx spelling extension uses an EN-US dictionary to correct words, what means that in
+some cases you might need to add a word to this dictionary. You can do so by adding the word to
+the bag-of-words file named ``spelling_wordlist.txt`` located in the folder ``pandas/doc/``.
+
+.. _contributing.code:
 
 Contributing to the code base
 =============================
@@ -453,11 +513,11 @@ standard. Google provides an open source style checker called ``cpplint``, but w
 use a fork of it that can be found `here <https://github.com/cpplint/cpplint>`__.
 Here are *some* of the more common ``cpplint`` issues:
 
-  - we restrict line-length to 80 characters to promote readability
-  - every header file must include a header guard to avoid name collisions if re-included
+* we restrict line-length to 80 characters to promote readability
+* every header file must include a header guard to avoid name collisions if re-included
 
-:ref:`Continuous Integration <contributing.ci>`. will run the
-`cpplint <https://pypi.python.org/pypi/cpplint>`_ tool
+:ref:`Continuous Integration <contributing.ci>` will run the
+`cpplint <https://pypi.org/project/cpplint>`_ tool
 and report any stylistic errors in your code. Therefore, it is helpful before
 submitting code to run the check yourself::
 
@@ -480,7 +540,7 @@ Once configured, you can run the tool as follows::
     clang-format modified-c-file
 
 This will output what your file will look like if the changes are made, and to apply
-them, just run the following command::
+them, run the following command::
 
     clang-format -i modified-c-file
 
@@ -501,11 +561,11 @@ Python (PEP8)
 There are several tools to ensure you abide by this standard. Here are *some* of
 the more common ``PEP8`` issues:
 
-  - we restrict line-length to 79 characters to promote readability
-  - passing arguments should have spaces after commas, e.g. ``foo(arg1, arg2, kw1='bar')``
+* we restrict line-length to 79 characters to promote readability
+* passing arguments should have spaces after commas, e.g. ``foo(arg1, arg2, kw1='bar')``
 
 :ref:`Continuous Integration <contributing.ci>` will run
-the `flake8 <http://pypi.python.org/pypi/flake8>`_ tool
+the `flake8 <https://pypi.org/project/flake8>`_ tool
 and report any stylistic errors in your code. Therefore, it is helpful before
 submitting code to run the check yourself on the diff::
 
@@ -547,7 +607,30 @@ Backwards Compatibility
 Please try to maintain backward compatibility. *pandas* has lots of users with lots of
 existing code, so don't break it if at all possible.  If you think breakage is required,
 clearly state why as part of the pull request.  Also, be careful when changing method
-signatures and add deprecation warnings where needed.
+signatures and add deprecation warnings where needed. Also, add the deprecated sphinx
+directive to the deprecated functions or methods.
+
+If a function with the same arguments as the one being deprecated exist, you can use
+the ``pandas.util._decorators.deprecate``:
+
+.. code-block:: python
+
+    from pandas.util._decorators import deprecate
+
+    deprecate('old_func', 'new_func', '0.21.0')
+
+Otherwise, you need to do it manually:
+
+.. code-block:: python
+
+    def old_func():
+        """Summary of the function.
+
+        .. deprecated:: 0.21.0
+           Use new_func instead.
+        """
+        warnings.warn('Use new_func instead.', FutureWarning, stacklevel=2)
+        new_func()
 
 .. _contributing.ci:
 
@@ -594,13 +677,13 @@ Adding tests is one of the most common requests after code is pushed to *pandas*
 it is worth getting in the habit of writing tests ahead of time so this is never an issue.
 
 Like many packages, *pandas* uses `pytest
-<http://doc.pytest.org/en/latest/>`_ and the convenient
+<http://docs.pytest.org/en/latest/>`_ and the convenient
 extensions in `numpy.testing
 <http://docs.scipy.org/doc/numpy/reference/routines.testing.html>`_.
 
 .. note::
 
-   The earliest supported pytest version is 3.1.0.
+   The earliest supported pytest version is 3.6.0.
 
 Writing tests
 ~~~~~~~~~~~~~
@@ -644,7 +727,7 @@ Transitioning to ``pytest``
     class TestReallyCoolFeature(object):
         ....
 
-Going forward, we are moving to a more *functional* style using the `pytest <http://doc.pytest.org/en/latest/>`__ framework, which offers a richer testing
+Going forward, we are moving to a more *functional* style using the `pytest <http://docs.pytest.org/en/latest/>`__ framework, which offers a richer testing
 framework that will facilitate testing and developing. Thus, instead of writing test classes, we will write test functions like this:
 
 .. code-block:: python
@@ -657,14 +740,14 @@ Using ``pytest``
 
 Here is an example of a self-contained set of tests that illustrate multiple features that we like to use.
 
-- functional style: tests are like ``test_*`` and *only* take arguments that are either fixtures or parameters
-- ``pytest.mark`` can be used to set metadata on test functions, e.g. ``skip`` or ``xfail``.
-- using ``parametrize``: allow testing of multiple cases
-- to set a mark on a parameter, ``pytest.param(..., marks=...)`` syntax should be used
-- ``fixture``, code for object construction, on a per-test basis
-- using bare ``assert`` for scalars and truth-testing
-- ``tm.assert_series_equal`` (and its counter part ``tm.assert_frame_equal``), for pandas object comparisons.
-- the typical pattern of constructing an ``expected`` and comparing versus the ``result``
+* functional style: tests are like ``test_*`` and *only* take arguments that are either fixtures or parameters
+* ``pytest.mark`` can be used to set metadata on test functions, e.g. ``skip`` or ``xfail``.
+* using ``parametrize``: allow testing of multiple cases
+* to set a mark on a parameter, ``pytest.param(..., marks=...)`` syntax should be used
+* ``fixture``, code for object construction, on a per-test basis
+* using bare ``assert`` for scalars and truth-testing
+* ``tm.assert_series_equal`` (and its counter part ``tm.assert_frame_equal``), for pandas object comparisons.
+* the typical pattern of constructing an ``expected`` and comparing versus the ``result``
 
 We would name this file ``test_cool_feature.py`` and put in an appropriate place in the ``pandas/tests/`` structure.
 
@@ -708,7 +791,7 @@ A test run of this yields
 
    ((pandas) bash-3.2$ pytest  test_cool_feature.py  -v
    =========================== test session starts ===========================
-   platform darwin -- Python 3.6.2, pytest-3.2.1, py-1.4.31, pluggy-0.4.0
+   platform darwin -- Python 3.6.2, pytest-3.6.0, py-1.4.31, pluggy-0.4.0
    collected 11 items
 
    tester.py::test_dtypes[int8] PASSED
@@ -730,11 +813,51 @@ Tests that we have ``parametrized`` are now accessible via the test name, for ex
 
    ((pandas) bash-3.2$ pytest  test_cool_feature.py  -v -k int8
    =========================== test session starts ===========================
-   platform darwin -- Python 3.6.2, pytest-3.2.1, py-1.4.31, pluggy-0.4.0
+   platform darwin -- Python 3.6.2, pytest-3.6.0, py-1.4.31, pluggy-0.4.0
    collected 11 items
 
    test_cool_feature.py::test_dtypes[int8] PASSED
    test_cool_feature.py::test_series[int8] PASSED
+
+
+.. _using-hypothesis:
+
+Using ``hypothesis``
+~~~~~~~~~~~~~~~~~~~~
+
+Hypothesis is a library for property-based testing.  Instead of explicitly
+parametrizing a test, you can describe *all* valid inputs and let Hypothesis
+try to find a failing input.  Even better, no matter how many random examples
+it tries, Hypothesis always reports a single minimal counterexample to your
+assertions - often an example that you would never have thought to test.
+
+See `Getting Started with Hypothesis <https://hypothesis.works/articles/getting-started-with-hypothesis/>`_
+for more of an introduction, then `refer to the Hypothesis documentation
+for details <https://hypothesis.readthedocs.io/en/latest/index.html>`_.
+
+.. code-block:: python
+
+    import json
+    from hypothesis import given, strategies as st
+
+    any_json_value = st.deferred(lambda: st.one_of(
+        st.none(), st.booleans(), st.floats(allow_nan=False), st.text(),
+        st.lists(any_json_value), st.dictionaries(st.text(), any_json_value)
+    ))
+
+    @given(value=any_json_value)
+    def test_json_roundtrip(value):
+        result = json.loads(json.dumps(value))
+        assert value == result
+
+This test shows off several useful features of Hypothesis, as well as
+demonstrating a good use-case: checking properties that should hold over
+a large or complicated domain of inputs.
+
+To keep the Pandas test suite running quickly, parametrized tests are
+preferred if the inputs or logic are simple, with Hypothesis tests reserved
+for cases with complex logic or where there are too many combinations of
+options or subtle interactions to test (or think of!) all of them.
 
 
 Running the test suite
@@ -759,7 +882,7 @@ Or with one of the following constructs::
     pytest pandas/tests/[test-module].py::[TestClass]
     pytest pandas/tests/[test-module].py::[TestClass]::[test_method]
 
-Using `pytest-xdist <https://pypi.python.org/pypi/pytest-xdist>`_, one can
+Using `pytest-xdist <https://pypi.org/project/pytest-xdist>`_, one can
 speed up local testing on multicore machines. To use this feature, you will
 need to install `pytest-xdist` via::
 
@@ -779,7 +902,7 @@ On Windows, one can type::
 This can significantly reduce the time it takes to locally run tests before
 submitting a pull request.
 
-For more, see the `pytest <http://doc.pytest.org/en/latest/>`_ documentation.
+For more, see the `pytest <http://docs.pytest.org/en/latest/>`_ documentation.
 
     .. versionadded:: 0.20.0
 
@@ -835,9 +958,9 @@ takes a regular expression.  For example, this will only run tests from a
 If you want to only run a specific group of tests from a file, you can do it
 using ``.`` as a separator. For example::
 
-    asv continuous -f 1.1 upstream/master HEAD -b groupby.groupby_agg_builtins
+    asv continuous -f 1.1 upstream/master HEAD -b groupby.GroupByMethods
 
-will only run the ``groupby_agg_builtins`` benchmark defined in ``groupby.py``.
+will only run the ``GroupByMethods`` benchmark defined in ``groupby.py``.
 
 You can also run the benchmark suite using the version of ``pandas``
 already installed in your current Python environment. This can be
@@ -866,7 +989,7 @@ Documenting your code
 Changes should be reflected in the release notes located in ``doc/source/whatsnew/vx.y.z.txt``.
 This file contains an ongoing change log for each release.  Add an entry to this file to
 document your fix, enhancement or (unavoidable) breaking change.  Make sure to include the
-GitHub issue number when adding your entry (using `` :issue:`1234` `` where `1234` is the
+GitHub issue number when adding your entry (using ``:issue:`1234``` where ``1234`` is the
 issue/pull request number).
 
 If your code is an enhancement, it is most likely necessary to add usage
@@ -877,12 +1000,12 @@ directive is used. The sphinx syntax for that is:
 
 .. code-block:: rst
 
-  .. versionadded:: 0.17.0
+  .. versionadded:: 0.21.0
 
-This will put the text *New in version 0.17.0* wherever you put the sphinx
+This will put the text *New in version 0.21.0* wherever you put the sphinx
 directive. This should also be put in the docstring when adding a new function
-or method (`example <https://github.com/pandas-dev/pandas/blob/v0.16.2/pandas/core/generic.py#L1959>`__)
-or a new keyword argument (`example <https://github.com/pandas-dev/pandas/blob/v0.16.2/pandas/core/frame.py#L1171>`__).
+or method (`example <https://github.com/pandas-dev/pandas/blob/v0.20.2/pandas/core/frame.py#L1495>`__)
+or a new keyword argument (`example <https://github.com/pandas-dev/pandas/blob/v0.20.2/pandas/core/generic.py#L568>`__).
 
 Contributing your changes to *pandas*
 =====================================
@@ -911,51 +1034,25 @@ Finally, commit your changes to your local repository with an explanatory messag
 uses a convention for commit message prefixes and layout.  Here are
 some common prefixes along with general guidelines for when to use them:
 
-    * ENH: Enhancement, new functionality
-    * BUG: Bug fix
-    * DOC: Additions/updates to documentation
-    * TST: Additions/updates to tests
-    * BLD: Updates to the build process/scripts
-    * PERF: Performance improvement
-    * CLN: Code cleanup
+* ENH: Enhancement, new functionality
+* BUG: Bug fix
+* DOC: Additions/updates to documentation
+* TST: Additions/updates to tests
+* BLD: Updates to the build process/scripts
+* PERF: Performance improvement
+* CLN: Code cleanup
 
 The following defines how a commit message should be structured.  Please reference the
 relevant GitHub issues in your commit message using GH1234 or #1234.  Either style
 is fine, but the former is generally preferred:
 
-    * a subject line with `< 80` chars.
-    * One blank line.
-    * Optionally, a commit message body.
+* a subject line with `< 80` chars.
+* One blank line.
+* Optionally, a commit message body.
 
 Now you can commit your changes in your local repository::
 
     git commit -m
-
-Combining commits
------------------
-
-If you have multiple commits, you may want to combine them into one commit, often
-referred to as "squashing" or "rebasing".  This is a common request by package maintainers
-when submitting a pull request as it maintains a more compact commit history.  To rebase
-your commits::
-
-    git rebase -i HEAD~#
-
-Where # is the number of commits you want to combine.  Then you can pick the relevant
-commit message and discard others.
-
-To squash to the master branch do::
-
-    git rebase -i master
-
-Use the ``s`` option on a commit to ``squash``, meaning to keep the commit messages,
-or ``f`` to ``fixup``, meaning to merge the commit messages.
-
-Then you will need to push the branch (see below) forcefully to replace the current
-commits with the new ones::
-
-    git push origin shiny-new-feature -f
-
 
 Pushing your changes
 --------------------
@@ -1012,15 +1109,51 @@ release.  To submit a pull request:
 #. Click ``Send Pull Request``.
 
 This request then goes to the repository maintainers, and they will review
-the code. If you need to make more changes, you can make them in
-your branch, push them to GitHub, and the pull request will be automatically
-updated.  Pushing them to GitHub again is done by::
+the code.
 
-    git push -f origin shiny-new-feature
+.. _contributing.update-pr:
+
+Updating your pull request
+--------------------------
+
+Based on the review you get on your pull request, you will probably need to make
+some changes to the code. In that case, you can make them in your branch,
+add a new commit to that branch, push it to GitHub, and the pull request will be
+automatically updated.  Pushing them to GitHub again is done by::
+
+    git push origin shiny-new-feature
 
 This will automatically update your pull request with the latest code and restart the
 :ref:`Continuous Integration <contributing.ci>` tests.
 
+Another reason you might need to update your pull request is to solve conflicts
+with changes that have been merged into the master branch since you opened your
+pull request.
+
+To do this, you need to "merge upstream master" in your branch::
+
+    git checkout shiny-new-feature
+    git fetch upstream
+    git merge upstream/master
+
+If there are no conflicts (or they could be fixed automatically), a file with a
+default commit message will open, and you can simply save and quit this file.
+
+If there are merge conflicts, you need to solve those conflicts. See for
+example at https://help.github.com/articles/resolving-a-merge-conflict-using-the-command-line/
+for an explanation on how to do this.
+Once the conflicts are merged and the files where the conflicts were solved are
+added, you can run ``git commit`` to save those fixes.
+
+If you have uncommitted changes at the moment you want to update the branch with
+master, you will need to ``stash`` them prior to updating (see the
+`stash docs <https://git-scm.com/book/en/v2/Git-Tools-Stashing-and-Cleaning>`__).
+This will effectively store your changes and they can be reapplied after updating.
+
+After the feature branch has been update locally, you can now update your pull
+request by pushing to the branch on GitHub::
+
+    git push origin shiny-new-feature
 
 Delete your merged branch (optional)
 ------------------------------------
@@ -1033,7 +1166,7 @@ delete your branch::
     git checkout master
     git merge upstream/master
 
-Then you can just do::
+Then you can do::
 
     git branch -d shiny-new-feature
 
@@ -1043,3 +1176,5 @@ branch has not actually been merged.
 The branch will still exist on GitHub, so to delete it there do::
 
     git push origin --delete shiny-new-feature
+
+.. _Gitter: https://gitter.im/pydata/pandas

@@ -6,8 +6,7 @@ import pytest
 
 # pylint: disable-msg=W0612,E1101
 from copy import deepcopy
-import sys
-from distutils.version import LooseVersion
+import pydoc
 
 from pandas.compat import range, lrange, long
 from pandas import compat
@@ -15,7 +14,8 @@ from pandas import compat
 from numpy.random import randn
 import numpy as np
 
-from pandas import DataFrame, Series, date_range, timedelta_range
+from pandas import (DataFrame, Series, date_range, timedelta_range,
+                    Categorical, SparseDataFrame)
 import pandas as pd
 
 from pandas.util.testing import (assert_almost_equal,
@@ -69,7 +69,9 @@ class SharedWithSparse(object):
     def test_get_value(self):
         for idx in self.frame.index:
             for col in self.frame.columns:
-                result = self.frame.get_value(idx, col)
+                with tm.assert_produces_warning(FutureWarning,
+                                                check_stacklevel=False):
+                    result = self.frame.get_value(idx, col)
                 expected = self.frame[col][idx]
                 tm.assert_almost_equal(result, expected)
 
@@ -125,6 +127,24 @@ class SharedWithSparse(object):
             self.frame.columns in self.frame
         except TypeError:
             pass
+
+    def test_tab_completion(self):
+        # DataFrame whose columns are identifiers shall have them in __dir__.
+        df = pd.DataFrame([list('abcd'), list('efgh')], columns=list('ABCD'))
+        for key in list('ABCD'):
+            assert key in dir(df)
+        assert isinstance(df.__getitem__('A'), pd.Series)
+
+        # DataFrame whose first-level columns are identifiers shall have
+        # them in __dir__.
+        df = pd.DataFrame(
+            [list('abcd'), list('efgh')],
+            columns=pd.MultiIndex.from_tuples(list(zip('ABCD', 'EFGH'))))
+        for key in list('ABCD'):
+            assert key in dir(df)
+        for key in list('EFGH'):
+            assert key not in dir(df)
+        assert isinstance(df.__getitem__('A'), pd.DataFrame)
 
     def test_not_hashable(self):
         df = self.klass([1])
@@ -194,6 +214,18 @@ class SharedWithSparse(object):
             exp = self.mixed_frame.loc[k]
             self._assert_series_equal(v, exp)
 
+    def test_iterrows_iso8601(self):
+        # GH19671
+        if self.klass == SparseDataFrame:
+            pytest.xfail(reason='SparseBlock datetime type not implemented.')
+
+        s = self.klass(
+            {'non_iso8601': ['M1701', 'M1802', 'M1903', 'M2004'],
+             'iso8601': date_range('2000-01-01', periods=4, freq='M')})
+        for k, v in s.iterrows():
+            exp = s.loc[k]
+            self._assert_series_equal(v, exp)
+
     def test_itertuples(self):
         for i, tup in enumerate(self.frame.itertuples()):
             s = self.klass._constructor_sliced(tup[1:])
@@ -213,59 +245,78 @@ class SharedWithSparse(object):
         assert (list(dfaa.itertuples()) ==
                 [(0, 1, 1), (1, 2, 2), (2, 3, 3)])
 
-        # repr with be int/long on windows
-        if not compat.is_platform_windows():
+        # repr with be int/long on 32-bit/windows
+        if not (compat.is_platform_windows() or compat.is_platform_32bit()):
             assert (repr(list(df.itertuples(name=None))) ==
                     '[(0, 1, 4), (1, 2, 5), (2, 3, 6)]')
 
         tup = next(df.itertuples(name='TestName'))
-
-        if sys.version >= LooseVersion('2.7'):
-            assert tup._fields == ('Index', 'a', 'b')
-            assert (tup.Index, tup.a, tup.b) == tup
-            assert type(tup).__name__ == 'TestName'
+        assert tup._fields == ('Index', 'a', 'b')
+        assert (tup.Index, tup.a, tup.b) == tup
+        assert type(tup).__name__ == 'TestName'
 
         df.columns = ['def', 'return']
         tup2 = next(df.itertuples(name='TestName'))
         assert tup2 == (0, 1, 4)
+        assert tup2._fields == ('Index', '_1', '_2')
 
-        if sys.version >= LooseVersion('2.7'):
-            assert tup2._fields == ('Index', '_1', '_2')
-
-        df3 = DataFrame(dict(('f' + str(i), [i]) for i in range(1024)))
+        df3 = DataFrame({'f' + str(i): [i] for i in range(1024)})
         # will raise SyntaxError if trying to create namedtuple
         tup3 = next(df3.itertuples())
         assert not hasattr(tup3, '_fields')
         assert isinstance(tup3, tuple)
 
+    def test_sequence_like_with_categorical(self):
+
+        # GH 7839
+        # make sure can iterate
+        df = DataFrame({"id": [1, 2, 3, 4, 5, 6],
+                        "raw_grade": ['a', 'b', 'b', 'a', 'a', 'e']})
+        df['grade'] = Categorical(df['raw_grade'])
+
+        # basic sequencing testing
+        result = list(df.grade.values)
+        expected = np.array(df.grade.values).tolist()
+        tm.assert_almost_equal(result, expected)
+
+        # iteration
+        for t in df.itertuples(index=False):
+            str(t)
+
+        for row, s in df.iterrows():
+            str(s)
+
+        for c, col in df.iteritems():
+            str(s)
+
     def test_len(self):
         assert len(self.frame) == len(self.frame.index)
 
-    def test_as_matrix(self):
+    def test_values(self):
         frame = self.frame
-        mat = frame.as_matrix()
+        arr = frame.values
 
-        frameCols = frame.columns
-        for i, row in enumerate(mat):
+        frame_cols = frame.columns
+        for i, row in enumerate(arr):
             for j, value in enumerate(row):
-                col = frameCols[j]
+                col = frame_cols[j]
                 if np.isnan(value):
                     assert np.isnan(frame[col][i])
                 else:
                     assert value == frame[col][i]
 
         # mixed type
-        mat = self.mixed_frame.as_matrix(['foo', 'A'])
-        assert mat[0, 0] == 'bar'
+        arr = self.mixed_frame[['foo', 'A']].values
+        assert arr[0, 0] == 'bar'
 
         df = self.klass({'real': [1, 2, 3], 'complex': [1j, 2j, 3j]})
-        mat = df.as_matrix()
-        assert mat[0, 0] == 1j
+        arr = df.values
+        assert arr[0, 0] == 1j
 
         # single block corner case
-        mat = self.frame.as_matrix(['A', 'B'])
+        arr = self.frame[['A', 'B']].values
         expected = self.frame.reindex(columns=['A', 'B']).values
-        assert_almost_equal(mat, expected)
+        assert_almost_equal(arr, expected)
 
     def test_transpose(self):
         frame = self.frame
@@ -304,8 +355,14 @@ class SharedWithSparse(object):
         result = f.sum(axis='columns')
         assert_series_equal(result, expected)
 
-    def test_more_asMatrix(self):
-        values = self.mixed_frame.as_matrix()
+    def test_class_axis(self):
+        # https://github.com/pandas-dev/pandas/issues/18147
+        # no exception and no empty docstring
+        assert pydoc.getdoc(DataFrame.index)
+        assert pydoc.getdoc(DataFrame.columns)
+
+    def test_more_values(self):
+        values = self.mixed_frame.values
         assert values.shape[1] == len(self.mixed_frame.columns)
 
     def test_repr_with_mi_nat(self):
@@ -361,6 +418,13 @@ class TestDataFrameMisc(SharedWithSparse, TestData):
     def test_values(self):
         self.frame.values[:, 0] = 5.
         assert (self.frame.values[:, 0] == 5).all()
+
+    def test_as_matrix_deprecated(self):
+        # GH18458
+        with tm.assert_produces_warning(FutureWarning):
+            result = self.frame.as_matrix(columns=self.frame.columns.tolist())
+        expected = self.frame.values
+        tm.assert_numpy_array_equal(result, expected)
 
     def test_deepcopy(self):
         cp = deepcopy(self.frame)
@@ -438,3 +502,14 @@ class TestDataFrameMisc(SharedWithSparse, TestData):
         # rename
         f = lambda x: x.rename({1: 'foo'}, inplace=True)
         _check_f(d.copy(), f)
+
+    def test_tab_complete_warning(self, ip):
+        # https://github.com/pandas-dev/pandas/issues/16409
+        pytest.importorskip('IPython', minversion="6.0.0")
+        from IPython.core.completer import provisionalcompleter
+
+        code = "import pandas as pd; df = pd.DataFrame()"
+        ip.run_code(code)
+        with tm.assert_produces_warning(None):
+            with provisionalcompleter('ignore'):
+                list(ip.Completer.completions('df.', 1))

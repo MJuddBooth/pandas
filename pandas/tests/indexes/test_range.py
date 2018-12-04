@@ -10,7 +10,7 @@ from pandas.compat import range, u, PY3
 
 import numpy as np
 
-from pandas import (notna, Series, Index, Float64Index,
+from pandas import (isna, Series, Index, Float64Index,
                     Int64Index, RangeIndex)
 
 import pandas.util.testing as tm
@@ -22,7 +22,7 @@ from .test_numeric import Numeric
 
 class TestRangeIndex(Numeric):
     _holder = RangeIndex
-    _compat_props = ['shape', 'ndim', 'size', 'itemsize']
+    _compat_props = ['shape', 'ndim', 'size']
 
     def setup_method(self, method):
         self.indices = dict(index=RangeIndex(0, 20, 2, name='foo'),
@@ -43,6 +43,11 @@ class TestRangeIndex(Numeric):
                     result = op(idx, scalar)
                     expected = op(Int64Index(idx), scalar)
                     tm.assert_index_equal(result, expected)
+
+    def test_can_hold_identifiers(self):
+        idx = self.create_index()
+        key = idx[0]
+        assert idx._can_hold_identifiers_and_holds_name(key) is False
 
     def test_binops(self):
         ops = [operator.add, operator.sub, operator.mul, operator.floordiv,
@@ -295,6 +300,12 @@ class TestRangeIndex(Numeric):
         # test 0th element
         tm.assert_index_equal(idx[0:4], result.insert(0, idx[0]))
 
+        # GH 18295 (test missing)
+        expected = Float64Index([0, np.nan, 1, 2, 3, 4])
+        for na in (np.nan, pd.NaT, None):
+            result = RangeIndex(5).insert(1, na)
+            tm.assert_index_equal(result, expected)
+
     def test_delete(self):
 
         idx = RangeIndex(5, name='Foo')
@@ -312,8 +323,8 @@ class TestRangeIndex(Numeric):
             # either depending on numpy version
             result = idx.delete(len(idx))
 
-    def test_view(self):
-        super(TestRangeIndex, self).test_view()
+    def test_view(self, indices):
+        super(TestRangeIndex, self).test_view(indices)
 
         i = RangeIndex(0, name='Foo')
         i_view = i.view()
@@ -705,7 +716,7 @@ class TestRangeIndex(Numeric):
 
         # memory savings vs int index
         i = RangeIndex(0, 1000)
-        assert i.nbytes < i.astype(int).nbytes / 10
+        assert i.nbytes < i._int64index.nbytes / 10
 
         # constant memory usage
         i2 = RangeIndex(0, 10)
@@ -773,7 +784,7 @@ class TestRangeIndex(Numeric):
     def test_explicit_conversions(self):
 
         # GH 8608
-        # add/sub are overriden explicity for Float/Int Index
+        # add/sub are overridden explicitly for Float/Int Index
         idx = RangeIndex(5)
 
         # float conversions
@@ -795,7 +806,7 @@ class TestRangeIndex(Numeric):
         result = a - fidx
         tm.assert_index_equal(result, expected)
 
-    def test_duplicates(self):
+    def test_has_duplicates(self):
         for ind in self.indices:
             if not len(ind):
                 continue
@@ -934,31 +945,6 @@ class TestRangeIndex(Numeric):
             i = RangeIndex(0, 5, step)
             assert len(i) == 0
 
-    def test_where(self):
-        i = self.create_index()
-        result = i.where(notna(i))
-        expected = i
-        tm.assert_index_equal(result, expected)
-
-        _nan = i._na_value
-        cond = [False] + [True] * len(i[1:])
-        expected = pd.Index([_nan] + i[1:].tolist())
-
-        result = i.where(cond)
-        tm.assert_index_equal(result, expected)
-
-    def test_where_array_like(self):
-        i = self.create_index()
-
-        _nan = i._na_value
-        cond = [False] + [True] * (len(i) - 1)
-        klasses = [list, tuple, np.array, pd.Series]
-        expected = pd.Index([_nan] + i[1:].tolist())
-
-        for klass in klasses:
-            result = i.where(klass(cond))
-            tm.assert_index_equal(result, expected)
-
     def test_append(self):
         # GH16212
         RI = RangeIndex
@@ -971,8 +957,8 @@ class TestRangeIndex(Numeric):
                  ([RI(1, 5, 2), RI(5, 6)], RI(1, 6, 2)),
                  ([RI(1, 3, 2), RI(4, 7, 3)], RI(1, 7, 3)),
                  ([RI(-4, 3, 2), RI(4, 7, 2)], RI(-4, 7, 2)),
-                 ([RI(-4, -8), RI(-8, -12)], RI(-8, -12)),
-                 ([RI(-4, -8), RI(3, -4)], RI(3, -8)),
+                 ([RI(-4, -8), RI(-8, -12)], RI(0, 0)),
+                 ([RI(-4, -8), RI(3, -4)], RI(0, 0)),
                  ([RI(-4, -8), RI(3, 5)], RI(3, 5)),
                  ([RI(-4, -2), RI(3, 5)], I64([-4, -3, 3, 4])),
                  ([RI(-2,), RI(3, 5)], RI(3, 5)),
@@ -994,3 +980,22 @@ class TestRangeIndex(Numeric):
                 # Append single item rather than list
                 result2 = indices[0].append(indices[1])
                 tm.assert_index_equal(result2, expected, exact=True)
+
+    @pytest.mark.parametrize('start,stop,step',
+                             [(0, 400, 3), (500, 0, -6), (-10**6, 10**6, 4),
+                              (10**6, -10**6, -4), (0, 10, 20)])
+    def test_max_min(self, start, stop, step):
+        # GH17607
+        idx = RangeIndex(start, stop, step)
+        expected = idx._int64index.max()
+        result = idx.max()
+        assert result == expected
+
+        expected = idx._int64index.min()
+        result = idx.min()
+        assert result == expected
+
+        # empty
+        idx = RangeIndex(start, stop, -step)
+        assert isna(idx.max())
+        assert isna(idx.min())

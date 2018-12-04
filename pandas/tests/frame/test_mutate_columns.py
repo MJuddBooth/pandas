@@ -4,6 +4,7 @@ from __future__ import print_function
 import pytest
 from pandas.compat import range, lrange
 import numpy as np
+from pandas.compat import PY36
 
 from pandas import DataFrame, Series, Index, MultiIndex
 
@@ -61,27 +62,61 @@ class TestDataFrameMutateColumns(TestData):
                               [3, 6, 9, 3, 6]], columns=list('ABCDE'))
         assert_frame_equal(result, expected)
 
-    def test_assign_alphabetical(self):
+    def test_assign_order(self):
         # GH 9818
         df = DataFrame([[1, 2], [3, 4]], columns=['A', 'B'])
         result = df.assign(D=df.A + df.B, C=df.A - df.B)
-        expected = DataFrame([[1, 2, -1, 3], [3, 4, -1, 7]],
-                             columns=list('ABCD'))
+
+        if PY36:
+            expected = DataFrame([[1, 2, 3, -1], [3, 4, 7, -1]],
+                                 columns=list('ABDC'))
+        else:
+            expected = DataFrame([[1, 2, -1, 3], [3, 4, -1, 7]],
+                                 columns=list('ABCD'))
         assert_frame_equal(result, expected)
         result = df.assign(C=df.A - df.B, D=df.A + df.B)
+
+        expected = DataFrame([[1, 2, -1, 3], [3, 4, -1, 7]],
+                             columns=list('ABCD'))
+
         assert_frame_equal(result, expected)
 
     def test_assign_bad(self):
         df = DataFrame({'A': [1, 2, 3], 'B': [4, 5, 6]})
+
         # non-keyword argument
         with pytest.raises(TypeError):
             df.assign(lambda x: x.A)
         with pytest.raises(AttributeError):
             df.assign(C=df.A, D=df.A + df.C)
+
+    @pytest.mark.skipif(PY36, reason="""Issue #14207: valid for python
+                        3.6 and above""")
+    def test_assign_dependent_old_python(self):
+        df = DataFrame({'A': [1, 2, 3], 'B': [4, 5, 6]})
+
+        # Key C does not exist at definition time of df
         with pytest.raises(KeyError):
-            df.assign(C=lambda df: df.A, D=lambda df: df['A'] + df['C'])
+            df.assign(C=lambda df: df.A,
+                      D=lambda df: df['A'] + df['C'])
         with pytest.raises(KeyError):
             df.assign(C=df.A, D=lambda x: x['A'] + x['C'])
+
+    @pytest.mark.skipif(not PY36, reason="""Issue #14207: not valid for
+                        python 3.5 and below""")
+    def test_assign_dependent(self):
+        df = DataFrame({'A': [1, 2], 'B': [3, 4]})
+
+        result = df.assign(C=df.A, D=lambda x: x['A'] + x['C'])
+        expected = DataFrame([[1, 3, 1, 2], [2, 4, 2, 4]],
+                             columns=list('ABCD'))
+        assert_frame_equal(result, expected)
+
+        result = df.assign(C=lambda df: df.A,
+                           D=lambda df: df['A'] + df['C'])
+        expected = DataFrame([[1, 3, 1, 2], [2, 4, 2, 4]],
+                             columns=list('ABCD'))
+        assert_frame_equal(result, expected)
 
     def test_insert_error_msmgs(self):
 
@@ -131,17 +166,17 @@ class TestDataFrameMutateColumns(TestData):
 
         # new item
         df['x'] = df['a'].astype('float32')
-        result = Series(dict(float64=5, float32=1))
-        assert (df.get_dtype_counts() == result).all()
+        result = Series(dict(float32=1, float64=5))
+        assert (df.get_dtype_counts().sort_index() == result).all()
 
         # replacing current (in different block)
         df['a'] = df['a'].astype('float32')
-        result = Series(dict(float64=4, float32=2))
-        assert (df.get_dtype_counts() == result).all()
+        result = Series(dict(float32=2, float64=4))
+        assert (df.get_dtype_counts().sort_index() == result).all()
 
         df['y'] = df['a'].astype('int32')
-        result = Series(dict(float64=4, float32=2, int32=1))
-        assert (df.get_dtype_counts() == result).all()
+        result = Series(dict(float32=2, float64=4, int32=1))
+        assert (df.get_dtype_counts().sort_index() == result).all()
 
         with tm.assert_raises_regex(ValueError, 'already exists'):
             df.insert(1, 'a', df['b'])
@@ -182,9 +217,10 @@ class TestDataFrameMutateColumns(TestData):
         with pytest.raises(KeyError):
             del df[('A',)]
 
-        # xref: https://github.com/pandas-dev/pandas/issues/2770
-        # the 'A' is STILL in the columns!
-        assert 'A' in df.columns
+        # behavior of dropped/deleted MultiIndex levels changed from
+        # GH 2770 to GH 19027: MultiIndex no longer '.__contains__'
+        # levels which are dropped/deleted
+        assert 'A' not in df.columns
         with pytest.raises(KeyError):
             del df['A']
 

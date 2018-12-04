@@ -2,13 +2,14 @@
 
 from __future__ import print_function
 
+import inspect
 import pytest
 
 from datetime import datetime, timedelta
 
 import numpy as np
 
-from pandas.compat import lrange
+from pandas.compat import lrange, PY2
 from pandas import (DataFrame, Series, Index, MultiIndex,
                     RangeIndex, date_range, IntervalIndex,
                     to_datetime)
@@ -129,6 +130,28 @@ class TestDataFrameAlterAxes(TestData):
         result = df.set_index(df.C)
         assert result.index.name == 'C'
 
+    @pytest.mark.parametrize(
+        'level', ['a', pd.Series(range(0, 8, 2), name='a')])
+    def test_set_index_duplicate_names(self, level):
+        # GH18872 - GH19029
+        df = pd.DataFrame(np.arange(8).reshape(4, 2), columns=['a', 'b'])
+
+        # Pass an existing level name:
+        df.index.name = 'a'
+        expected = pd.MultiIndex.from_tuples([(0, 0), (1, 2), (2, 4), (3, 6)],
+                                             names=['a', 'a'])
+        result = df.set_index(level, append=True)
+        tm.assert_index_equal(result.index, expected)
+        result = df.set_index([level], append=True)
+        tm.assert_index_equal(result.index, expected)
+
+        # Pass twice the same level name (only works with passing actual data)
+        if isinstance(level, pd.Series):
+            result = df.set_index([level, level])
+            expected = pd.MultiIndex.from_tuples(
+                [(0, 0), (2, 2), (4, 4), (6, 6)], names=['a', 'a'])
+            tm.assert_index_equal(result.index, expected)
+
     def test_set_index_nonuniq(self):
         df = DataFrame({'A': ['foo', 'foo', 'foo', 'bar', 'bar'],
                         'B': ['one', 'two', 'three', 'one', 'two'],
@@ -143,10 +166,11 @@ class TestDataFrameAlterAxes(TestData):
     def test_set_index_bug(self):
         # GH1590
         df = DataFrame({'val': [0, 1, 2], 'key': ['a', 'b', 'c']})
-        df2 = df.select(lambda indx: indx >= 1)
-        rs = df2.set_index('key')
         xp = DataFrame({'val': [1, 2]},
                        Index(['b', 'c'], name='key'))
+
+        df2 = df.loc[df.index.map(lambda indx: indx >= 1)]
+        rs = df2.set_index('key')
         assert_frame_equal(rs, xp)
 
     def test_set_index_pass_arrays(self):
@@ -233,8 +257,8 @@ class TestDataFrameAlterAxes(TestData):
         # convert to utc
         df['C'] = i.to_series().reset_index(drop=True)
         result = df['C']
-        comp = pd.DatetimeIndex(expected.values).copy()
-        comp.tz = None
+        comp = pd.DatetimeIndex(expected.values)
+        comp = comp.tz_localize(None)
         tm.assert_numpy_array_equal(result.values, comp.values)
 
         # list of datetimes with a tz
@@ -253,25 +277,26 @@ class TestDataFrameAlterAxes(TestData):
         df.pop('ts')
         assert_frame_equal(df, expected)
 
+    def test_reset_index_tz(self, tz_aware_fixture):
         # GH 3950
         # reset_index with single level
-        for tz in ['UTC', 'Asia/Tokyo', 'US/Eastern']:
-            idx = pd.date_range('1/1/2011', periods=5,
-                                freq='D', tz=tz, name='idx')
-            df = pd.DataFrame(
-                {'a': range(5), 'b': ['A', 'B', 'C', 'D', 'E']}, index=idx)
+        tz = tz_aware_fixture
+        idx = pd.date_range('1/1/2011', periods=5,
+                            freq='D', tz=tz, name='idx')
+        df = pd.DataFrame(
+            {'a': range(5), 'b': ['A', 'B', 'C', 'D', 'E']}, index=idx)
 
-            expected = pd.DataFrame({'idx': [datetime(2011, 1, 1),
-                                             datetime(2011, 1, 2),
-                                             datetime(2011, 1, 3),
-                                             datetime(2011, 1, 4),
-                                             datetime(2011, 1, 5)],
-                                     'a': range(5),
-                                     'b': ['A', 'B', 'C', 'D', 'E']},
-                                    columns=['idx', 'a', 'b'])
-            expected['idx'] = expected['idx'].apply(
-                lambda d: pd.Timestamp(d, tz=tz))
-            assert_frame_equal(df.reset_index(), expected)
+        expected = pd.DataFrame({'idx': [datetime(2011, 1, 1),
+                                         datetime(2011, 1, 2),
+                                         datetime(2011, 1, 3),
+                                         datetime(2011, 1, 4),
+                                         datetime(2011, 1, 5)],
+                                 'a': range(5),
+                                 'b': ['A', 'B', 'C', 'D', 'E']},
+                                columns=['idx', 'a', 'b'])
+        expected['idx'] = expected['idx'].apply(
+            lambda d: pd.Timestamp(d, tz=tz))
+        assert_frame_equal(df.reset_index(), expected)
 
     def test_set_index_timezone(self):
         # GH 12358
@@ -285,7 +310,7 @@ class TestDataFrameAlterAxes(TestData):
 
     def test_set_index_dst(self):
         di = pd.date_range('2006-10-29 00:00:00', periods=3,
-                           req='H', tz='US/Pacific')
+                           freq='H', tz='US/Pacific')
 
         df = pd.DataFrame(data={'a': [0, 1, 2], 'b': [3, 4, 5]},
                           index=di).reset_index()
@@ -435,6 +460,25 @@ class TestDataFrameAlterAxes(TestData):
         assert no_return is None
         assert_frame_equal(result, expected)
 
+    def test_rename_axis_warns(self):
+        # https://github.com/pandas-dev/pandas/issues/17833
+        df = pd.DataFrame({"A": [1, 2], "B": [1, 2]})
+        with tm.assert_produces_warning(FutureWarning) as w:
+            df.rename_axis(id, axis=0)
+            assert 'rename' in str(w[0].message)
+
+        with tm.assert_produces_warning(FutureWarning) as w:
+            df.rename_axis({0: 10, 1: 20}, axis=0)
+            assert 'rename' in str(w[0].message)
+
+        with tm.assert_produces_warning(FutureWarning) as w:
+            df.rename_axis(id, axis=1)
+            assert 'rename' in str(w[0].message)
+
+        with tm.assert_produces_warning(FutureWarning) as w:
+            df['A'].rename_axis(id)
+            assert 'rename' in str(w[0].message)
+
     def test_rename_multiindex(self):
 
         tuples_index = [('foo1', 'bar1'), ('foo2', 'bar2')]
@@ -445,7 +489,7 @@ class TestDataFrameAlterAxes(TestData):
         df = DataFrame([(0, 0), (1, 1)], index=index, columns=columns)
 
         #
-        # without specifying level -> accross all levels
+        # without specifying level -> across all levels
 
         renamed = df.rename(index={'foo1': 'foo3', 'bar2': 'bar3'},
                             columns={'fizz1': 'fizz3', 'buzz2': 'buzz3'})
@@ -541,6 +585,17 @@ class TestDataFrameAlterAxes(TestData):
                                  [('foo', 'bah'), ('bar', 'bas')],
                                  names=['a', 'b']),
                              columns=['2001-01-01'])
+        assert_frame_equal(df, expected)
+
+    def test_rename_bug2(self):
+        # GH 19497
+        # rename was changing Index to MultiIndex if Index contained tuples
+
+        df = DataFrame(data=np.arange(3), index=[(0, 0), (1, 1), (2, 2)],
+                       columns=["a"])
+        df = df.rename({(1, 1): (5, 4)}, axis="index")
+        expected = DataFrame(data=np.arange(3), index=[(0, 0), (5, 4), (2, 2)],
+                             columns=["a"])
         assert_frame_equal(df, expected)
 
     def test_reorder_levels(self):
@@ -810,7 +865,7 @@ class TestDataFrameAlterAxes(TestData):
 
         mi = MultiIndex.from_arrays(df[['A', 'B']].T.values, names=['A', 'B'])
         mi2 = MultiIndex.from_arrays(df[['A', 'B', 'A', 'B']].T.values,
-                                     names=['A', 'B', 'A', 'B'])
+                                     names=['A', 'B', 'C', 'D'])
 
         df = df.set_index(['A', 'B'])
 
@@ -822,19 +877,138 @@ class TestDataFrameAlterAxes(TestData):
         # Check actual equality
         tm.assert_index_equal(df.set_index(df.index).index, mi)
 
+        idx2 = df.index.rename(['C', 'D'])
+
         # Check that [MultiIndex, MultiIndex] yields a MultiIndex rather
         # than a pair of tuples
-        assert isinstance(df.set_index(
-            [df.index, df.index]).index, MultiIndex)
+        assert isinstance(df.set_index([df.index, idx2]).index, MultiIndex)
 
         # Check equality
-        tm.assert_index_equal(df.set_index([df.index, df.index]).index, mi2)
+        tm.assert_index_equal(df.set_index([df.index, idx2]).index, mi2)
 
     def test_rename_objects(self):
         renamed = self.mixed_frame.rename(columns=str.upper)
 
         assert 'FOO' in renamed
         assert 'foo' not in renamed
+
+    def test_rename_axis_style(self):
+        # https://github.com/pandas-dev/pandas/issues/12392
+        df = pd.DataFrame({"A": [1, 2], "B": [1, 2]}, index=['X', 'Y'])
+        expected = pd.DataFrame({"a": [1, 2], "b": [1, 2]}, index=['X', 'Y'])
+
+        result = df.rename(str.lower, axis=1)
+        assert_frame_equal(result, expected)
+
+        result = df.rename(str.lower, axis='columns')
+        assert_frame_equal(result, expected)
+
+        result = df.rename({"A": 'a', 'B': 'b'}, axis=1)
+        assert_frame_equal(result, expected)
+
+        result = df.rename({"A": 'a', 'B': 'b'}, axis='columns')
+        assert_frame_equal(result, expected)
+
+        # Index
+        expected = pd.DataFrame({"A": [1, 2], "B": [1, 2]}, index=['x', 'y'])
+        result = df.rename(str.lower, axis=0)
+        assert_frame_equal(result, expected)
+
+        result = df.rename(str.lower, axis='index')
+        assert_frame_equal(result, expected)
+
+        result = df.rename({'X': 'x', 'Y': 'y'}, axis=0)
+        assert_frame_equal(result, expected)
+
+        result = df.rename({'X': 'x', 'Y': 'y'}, axis='index')
+        assert_frame_equal(result, expected)
+
+        result = df.rename(mapper=str.lower, axis='index')
+        assert_frame_equal(result, expected)
+
+    def test_rename_mapper_multi(self):
+        df = pd.DataFrame({"A": ['a', 'b'], "B": ['c', 'd'],
+                           'C': [1, 2]}).set_index(["A", "B"])
+        result = df.rename(str.upper)
+        expected = df.rename(index=str.upper)
+        assert_frame_equal(result, expected)
+
+    def test_rename_positional_named(self):
+        # https://github.com/pandas-dev/pandas/issues/12392
+        df = pd.DataFrame({"a": [1, 2], "b": [1, 2]}, index=['X', 'Y'])
+        result = df.rename(str.lower, columns=str.upper)
+        expected = pd.DataFrame({"A": [1, 2], "B": [1, 2]}, index=['x', 'y'])
+        assert_frame_equal(result, expected)
+
+    def test_rename_axis_style_raises(self):
+        # https://github.com/pandas-dev/pandas/issues/12392
+        df = pd.DataFrame({"A": [1, 2], "B": [1, 2]}, index=['0', '1'])
+
+        # Named target and axis
+        with tm.assert_raises_regex(TypeError, None):
+            df.rename(index=str.lower, axis=1)
+
+        with tm.assert_raises_regex(TypeError, None):
+            df.rename(index=str.lower, axis='columns')
+
+        with tm.assert_raises_regex(TypeError, None):
+            df.rename(index=str.lower, axis='columns')
+
+        with tm.assert_raises_regex(TypeError, None):
+            df.rename(columns=str.lower, axis='columns')
+
+        with tm.assert_raises_regex(TypeError, None):
+            df.rename(index=str.lower, axis=0)
+
+        # Multiple targets and axis
+        with tm.assert_raises_regex(TypeError, None):
+            df.rename(str.lower, str.lower, axis='columns')
+
+        # Too many targets
+        with tm.assert_raises_regex(TypeError, None):
+            df.rename(str.lower, str.lower, str.lower)
+
+        # Duplicates
+        with tm.assert_raises_regex(TypeError, "multiple values"):
+            df.rename(id, mapper=id)
+
+    def test_reindex_api_equivalence(self):
+        # equivalence of the labels/axis and index/columns API's
+        df = DataFrame([[1, 2, 3], [3, 4, 5], [5, 6, 7]],
+                       index=['a', 'b', 'c'],
+                       columns=['d', 'e', 'f'])
+
+        res1 = df.reindex(['b', 'a'])
+        res2 = df.reindex(index=['b', 'a'])
+        res3 = df.reindex(labels=['b', 'a'])
+        res4 = df.reindex(labels=['b', 'a'], axis=0)
+        res5 = df.reindex(['b', 'a'], axis=0)
+        for res in [res2, res3, res4, res5]:
+            tm.assert_frame_equal(res1, res)
+
+        res1 = df.reindex(columns=['e', 'd'])
+        res2 = df.reindex(['e', 'd'], axis=1)
+        res3 = df.reindex(labels=['e', 'd'], axis=1)
+        for res in [res2, res3]:
+            tm.assert_frame_equal(res1, res)
+
+        res1 = df.reindex(index=['b', 'a'], columns=['e', 'd'])
+        res2 = df.reindex(columns=['e', 'd'], index=['b', 'a'])
+        res3 = df.reindex(labels=['b', 'a'], axis=0).reindex(labels=['e', 'd'],
+                                                             axis=1)
+        for res in [res2, res3]:
+            tm.assert_frame_equal(res1, res)
+
+    def test_rename_positional(self):
+        df = pd.DataFrame(columns=['A', 'B'])
+        with tm.assert_produces_warning(FutureWarning) as rec:
+            result = df.rename(None, str.lower)
+        expected = pd.DataFrame(columns=['a', 'b'])
+        assert_frame_equal(result, expected)
+        assert len(rec) == 1
+        message = str(rec[0].message)
+        assert 'rename' in message
+        assert 'Use named arguments' in message
 
     def test_assign_columns(self):
         self.frame['hi'] = 'there'
@@ -858,6 +1032,51 @@ class TestDataFrameAlterAxes(TestData):
             result = df.set_index(cols).reset_index()
             result = result.reindex(columns=df.columns)
             tm.assert_frame_equal(result, df)
+
+    def test_ambiguous_warns(self):
+        df = pd.DataFrame({"A": [1, 2]})
+        with tm.assert_produces_warning(FutureWarning):
+            df.rename(id, id)
+
+        with tm.assert_produces_warning(FutureWarning):
+            df.rename({0: 10}, {"A": "B"})
+
+    @pytest.mark.skipif(PY2, reason="inspect.signature")
+    def test_rename_signature(self):
+        sig = inspect.signature(pd.DataFrame.rename)
+        parameters = set(sig.parameters)
+        assert parameters == {"self", "mapper", "index", "columns", "axis",
+                              "inplace", "copy", "level"}
+
+    @pytest.mark.skipif(PY2, reason="inspect.signature")
+    def test_reindex_signature(self):
+        sig = inspect.signature(pd.DataFrame.reindex)
+        parameters = set(sig.parameters)
+        assert parameters == {"self", "labels", "index", "columns", "axis",
+                              "limit", "copy", "level", "method",
+                              "fill_value", "tolerance"}
+
+    def test_droplevel(self):
+        # GH20342
+        df = pd.DataFrame([
+            [1, 2, 3, 4],
+            [5, 6, 7, 8],
+            [9, 10, 11, 12]
+        ])
+        df = df.set_index([0, 1]).rename_axis(['a', 'b'])
+        df.columns = pd.MultiIndex.from_tuples([('c', 'e'), ('d', 'f')],
+                                               names=['level_1', 'level_2'])
+
+        # test that dropping of a level in index works
+        expected = df.reset_index('a', drop=True)
+        result = df.droplevel('a', axis='index')
+        assert_frame_equal(result, expected)
+
+        # test that dropping of a level in columns works
+        expected = df.copy()
+        expected.columns = pd.Index(['c', 'd'], name='level_1')
+        result = df.droplevel('level_2', axis='columns')
+        assert_frame_equal(result, expected)
 
 
 class TestIntervalIndex(object):

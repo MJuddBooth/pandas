@@ -3,9 +3,11 @@
 Contributing to the documentation
 =================================
 
-If you're not the developer type, contributing to the documentation is still
-of huge value. You don't even have to be an expert on
-*pandas* to do so! Something as simple as rewriting small passages for clarity
+Whether you are someone who loves writing, teaching, or development,
+contributing to the documentation is a huge value. If you don't see yourself
+as a developer type, please don't stress and know that we want you to
+contribute. You don't even have to be an expert on *pandas* to do so!
+Something as simple as rewriting small passages for clarity
 as you reference the docs is a simple but effective way to contribute. The
 next person to read that passage will be in your debt!
 
@@ -40,7 +42,7 @@ Some other important things to know about the docs:
 - The docstrings follow the **Numpy Docstring Standard** which is used widely
   in the Scientific Python community. This standard specifies the format of
   the different sections of the docstring. See `this document
-  <https://github.com/numpy/numpy/blob/master/doc/HOWTO_DOCUMENT.rst.txt>`_
+  <https://numpydoc.readthedocs.io/en/latest/>`_
   for a detailed explanation, or look at some of the existing functions to
   extend it in a similar manner.
 
@@ -158,8 +160,8 @@ Where to start?
 
 There are a number of issues listed under `Docs
 <https://github.com/pandas-dev/pandas/issues?labels=Docs&sort=updated&state=open>`_
-and `Good as first PR
-<https://github.com/pandas-dev/pandas/issues?labels=Good+as+first+PR&sort=updated&state=open>`_
+and `good first issue
+<https://github.com/pandas-dev/pandas/issues?labels=good+first+issue&sort=updated&state=open>`_
 where you could start out.
 
 Or maybe you have an idea of your own, by using pandas, looking for something

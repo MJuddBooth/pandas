@@ -81,6 +81,14 @@ class TestSeriesAlterAxes(TestData):
             exp = np.array(['a', 'b', 'c'], dtype=np.object_)
             tm.assert_numpy_array_equal(s.index.values, exp)
 
+    def test_rename_axis_supported(self):
+        # Supporting axis for compatibility, detailed in GH-18589
+        s = Series(range(5))
+        s.rename({}, axis=0)
+        s.rename({}, axis='index')
+        with tm.assert_raises_regex(ValueError, 'No axis named 5'):
+            s.rename({}, axis=5)
+
     def test_set_name_attribute(self):
         s = Series([1, 2, 3])
         s2 = Series([1, 2, 3], name='bar')
@@ -180,6 +188,11 @@ class TestSeriesAlterAxes(TestData):
             with tm.assert_raises_regex(IndexError, 'Too many levels'):
                 s.reset_index(level=[0, 1, 2])
 
+        # Check that .reset_index([],drop=True) doesn't fail
+        result = pd.Series(range(4)).reset_index([], drop=True)
+        expected = pd.Series(range(4))
+        assert_series_equal(result, expected)
+
     def test_reset_index_range(self):
         # GH 12071
         s = pd.Series(range(2), name='A', dtype='int64')
@@ -214,17 +227,6 @@ class TestSeriesAlterAxes(TestData):
         expected = Series(np.arange(6), index=e_idx)
         assert_series_equal(result, expected)
 
-        result = s.reorder_levels([0, 0, 0])
-        e_idx = MultiIndex(levels=[['bar'], ['bar'], ['bar']],
-                           labels=[[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0],
-                                   [0, 0, 0, 0, 0, 0]],
-                           names=['L0', 'L0', 'L0'])
-        expected = Series(range(6), index=e_idx)
-        assert_series_equal(result, expected)
-
-        result = s.reorder_levels(['L0', 'L0', 'L0'])
-        assert_series_equal(result, expected)
-
     def test_rename_axis_inplace(self):
         # GH 15704
         series = self.ts.copy()
@@ -235,6 +237,23 @@ class TestSeriesAlterAxes(TestData):
         assert no_return is None
         assert_series_equal(result, expected)
 
+    def test_set_axis_inplace_axes(self, axis_series):
+        # GH14636
+        ser = Series(np.arange(4), index=[1, 3, 5, 7], dtype='int64')
+
+        expected = ser.copy()
+        expected.index = list('abcd')
+
+        # inplace=True
+        # The FutureWarning comes from the fact that we would like to have
+        # inplace default to False some day
+        for inplace, warn in [(None, FutureWarning), (True, None)]:
+            result = ser.copy()
+            kwargs = {'inplace': inplace}
+            with tm.assert_produces_warning(warn):
+                result.set_axis(list('abcd'), axis=axis_series, **kwargs)
+            tm.assert_series_equal(result, expected)
+
     def test_set_axis_inplace(self):
         # GH14636
 
@@ -242,17 +261,6 @@ class TestSeriesAlterAxes(TestData):
 
         expected = s.copy()
         expected.index = list('abcd')
-
-        for axis in 0, 'index':
-            # inplace=True
-            # The FutureWarning comes from the fact that we would like to have
-            # inplace default to False some day
-            for inplace, warn in (None, FutureWarning), (True, None):
-                result = s.copy()
-                kwargs = {'inplace': inplace}
-                with tm.assert_produces_warning(warn):
-                    result.set_axis(list('abcd'), axis=axis, **kwargs)
-                tm.assert_series_equal(result, expected)
 
         # inplace=False
         result = s.set_axis(list('abcd'), axis=0, inplace=False)
@@ -264,7 +272,7 @@ class TestSeriesAlterAxes(TestData):
         tm.assert_series_equal(result, expected)
 
         # wrong values for the "axis" parameter
-        for axis in 2, 'foo':
+        for axis in [2, 'foo']:
             with tm.assert_raises_regex(ValueError, 'No axis named'):
                 s.set_axis(list('abcd'), axis=axis, inplace=False)
 
@@ -274,7 +282,34 @@ class TestSeriesAlterAxes(TestData):
         expected = s.copy()
         expected.index = list('abcd')
 
-        for axis in 0, 'index':
+        for axis in [0, 'index']:
             with tm.assert_produces_warning(FutureWarning):
                 result = s.set_axis(0, list('abcd'), inplace=False)
             tm.assert_series_equal(result, expected)
+
+    def test_reset_index_drop_errors(self):
+        #  GH 20925
+
+        # KeyError raised for series index when passed level name is missing
+        s = pd.Series(range(4))
+        with tm.assert_raises_regex(KeyError, 'must be same as name'):
+            s.reset_index('wrong', drop=True)
+        with tm.assert_raises_regex(KeyError, 'must be same as name'):
+            s.reset_index('wrong')
+
+        # KeyError raised for series when level to be dropped is missing
+        s = pd.Series(range(4), index=pd.MultiIndex.from_product([[1, 2]] * 2))
+        with tm.assert_raises_regex(KeyError, 'not found'):
+            s.reset_index('wrong', drop=True)
+
+    def test_droplevel(self):
+        # GH20342
+        ser = pd.Series([1, 2, 3, 4])
+        ser.index = pd.MultiIndex.from_arrays([(1, 2, 3, 4), (5, 6, 7, 8)],
+                                              names=['a', 'b'])
+        expected = ser.reset_index('b', drop=True)
+        result = ser.droplevel('b', axis='index')
+        assert_series_equal(result, expected)
+        # test that droplevel raises ValueError on axis != 0
+        with pytest.raises(ValueError):
+            ser.droplevel(1, axis='columns')
