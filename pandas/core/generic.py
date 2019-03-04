@@ -2531,8 +2531,8 @@ class NDFrame(PandasObject, SelectionMixin):
         """
         from pandas.io import sql
         sql.to_sql(self, name, con, schema=schema, if_exists=if_exists,
-                index=index, index_label=index_label, chunksize=chunksize,
-                dtype=dtype, method=method, keys=keys, create_pk=create_pk)
+                   index=index, index_label=index_label, chunksize=chunksize,
+                   dtype=dtype, method=method, keys=keys, create_pk=create_pk)
 
     def to_pickle(self, path, compression='infer',
                   protocol=pkl.HIGHEST_PROTOCOL):
