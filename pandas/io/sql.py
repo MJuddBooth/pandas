@@ -438,10 +438,11 @@ def to_sql(frame, name, con, flavor=None, schema=None, if_exists='fail',
     schema : string, default None
         Name of SQL schema in database to write to (if database flavor
         supports this). If None, use default schema (default).
-    if_exists : {'fail', 'replace', 'append'}, default 'fail'
+    if_exists : {'fail', 'replace', 'append', 'truncate'}, default 'fail'
         - fail: If table exists, do nothing.
         - replace: If table exists, drop it, recreate it, and insert data.
         - append: If table exists, insert data. Create if does not exist.
+        - truncate: if table exists, truncate and insert data.
     index : boolean, default True
         Write DataFrame index as a column
     index_label : string or sequence, default None
