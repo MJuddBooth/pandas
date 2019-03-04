@@ -1369,6 +1369,34 @@ class _TestSQLAlchemy(SQLAlchemyMixIn, PandasSQLTest):
         else:
             tm.assert_frame_equal(result, df)
 
+    def test_datetime_tz(self):
+        tz = "US/Eastern"
+        df = DataFrame({'A': date_range('2013-01-01 09:00:00', periods=3, tz=tz),
+                        'B': np.arange(3.0)})
+        df.to_sql('test_datetime_tz', self.conn)
+
+        # with read_table -> type information from schema used
+        result = sql.read_sql_table('test_datetime_tz', self.conn)
+        result = result.drop('index', axis=1)
+        # to_sql drops the tz info (which is probably the right thing as
+        # the sql standard doesn't provide a way to store the timezone information
+        # "Timestaap with Time Zone" really stores in UTC and returns in
+        # the timezone of the server.
+        # So, anyway, we need add back the timezone for the comparison...
+        result = result.tz_localize(tz=tz)
+        tm.assert_frame_equal(result, df)
+
+        # with read_sql -> no type information -> sqlite has no native
+        result = sql.read_sql_query('SELECT * FROM test_datetime_tz', self.conn)
+        result = result.drop('index', axis=1).tz_localize(tz=tz)
+        if self.flavor == 'sqlite':
+            self.assertTrue(isinstance(result.loc[0, 'A'], string_types))
+            result['A'] = to_datetime(result['A'])
+            tm.assert_frame_equal(result, df)
+        else:
+            tm.assert_frame_equal(result, df)
+
+
     def test_datetime_NaT(self):
         df = DataFrame({'A': date_range('2013-01-01 09:00:00', periods=3),
                         'B': np.arange(3.0)})
