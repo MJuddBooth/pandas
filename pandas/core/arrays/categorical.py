@@ -356,19 +356,23 @@ class Categorical(ExtensionArray, PandasObject):
         if dtype.categories is None:
             try:
                 codes, categories = factorize(values, sort=True)
-            except TypeError:
+            except TypeError as e:
                 codes, categories = factorize(values, sort=False)
                 if dtype.ordered:
                     # raise, as we don't have a sortable data structure and so
                     # the user should give us one by specifying categories
-                    raise TypeError("'values' is not ordered, please "
+                    raise TypeError("Unable to sort 'values'. Please "
                                     "explicitly specify the categories order "
-                                    "by passing in a categories argument.")
-            except ValueError:
-
+                                    "by passing in a categories argument. "
+                                    "The original error was: {}.".format(e))
+            except ValueError as e:
                 # FIXME
-                raise NotImplementedError("> 1 ndim Categorical are not "
-                                          "supported at this time")
+                raise NotImplementedError("Failed to build categories. Perhaps "
+                                          "you are trying to create > 1 ndim "
+                                          "Categorical, which are not "
+                                          "supported at this time. The "
+                                          "original error was: {}".format(e))
+
 
             # we're inferring from values
             dtype = CategoricalDtype(categories, dtype.ordered)
