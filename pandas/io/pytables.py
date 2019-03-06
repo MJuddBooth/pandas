@@ -43,7 +43,7 @@ from pandas.io.common import _stringify_path
 from pandas.io.formats.printing import adjoin, pprint_thing
 
 # versioning attribute
-_version = '0.18.0'
+_version = '0.25.0'
 
 # encoding
 # PY3 encoding if we don't specify
