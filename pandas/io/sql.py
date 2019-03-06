@@ -890,9 +890,16 @@ class SQLTable(PandasObject):
                 if col.dt.tz is not None:
                     return TIMESTAMP(timezone=True)
             except AttributeError:
-                # The column is actually a DatetimeIndex
-                if col.tz is not None:
-                    return TIMESTAMP(timezone=True)
+                try:
+                    # The column is actually a DatetimeIndex
+                    if col.tz is not None:
+                        return TIMESTAMP(timezone=True)
+                except AttributeError:
+                    raise ValueError("Expected {name} to be a DatetimeIndex "
+                                     "but found a {t} instead.  It may be that "
+                                     "the column mixes tz-aware and tz-unaware "
+                                     "Timestamps".format(name=col.name,
+                                                         t=type(col).__name__))
             return DateTime
         if col_type == 'timedelta64':
             warnings.warn("the 'timedelta' type is not supported, and will be "
