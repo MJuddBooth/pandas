@@ -5254,6 +5254,8 @@ class DataFrame(NDFrame):
         """
         other_idxlen = len(other.index)  # save for compare
 
+        # preserve dtypes before align potentially changes them
+        other_dtypes = other.dtypes
         this, other = self.align(other, copy=False)
         new_index = this.index
 
@@ -5261,7 +5263,13 @@ class DataFrame(NDFrame):
             return self.copy()
 
         if self.empty and len(other) == other_idxlen:
-            return other.copy()
+            result = other.copy()
+            # try to preserve self dtypes
+            for c, dtype in self.dtypes.iteritems():
+                if c in result:
+                    result[c] = maybe_downcast_to_dtype(result[c], dtype)
+            return result
+            #return other.copy()
 
         # sorts if possible
         new_columns = this.columns.union(other.columns)
@@ -5272,7 +5280,7 @@ class DataFrame(NDFrame):
             otherSeries = other[col]
 
             this_dtype = series.dtype
-            other_dtype = otherSeries.dtype
+            other_dtype = other_dtypes.get(col, otherSeries.dtype)
 
             this_mask = isna(series)
             other_mask = isna(otherSeries)
@@ -5298,7 +5306,9 @@ class DataFrame(NDFrame):
                 except ValueError:
                     # e.g. new_dtype is integer types
                     pass
+                    #Does anything need to be done with new_dtype in this case?
             else:
+                this_dtype = self[col].dtype
                 # if we have different dtypes, possibly promote
                 new_dtype = find_common_type([this_dtype, other_dtype])
                 if not is_dtype_equal(this_dtype, new_dtype):
@@ -5307,7 +5317,7 @@ class DataFrame(NDFrame):
                     otherSeries = otherSeries.astype(new_dtype)
 
             arr = func(series, otherSeries)
-            arr = maybe_downcast_to_dtype(arr, this_dtype)
+            arr = maybe_downcast_to_dtype(arr, new_dtype)
 
             result[col] = arr
 

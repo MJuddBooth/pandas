@@ -6,6 +6,7 @@ from datetime import datetime
 
 import numpy as np
 import pytest
+from distutils.version import LooseVersion
 
 from pandas.compat import lrange
 
@@ -517,6 +518,8 @@ class TestDataFrameConcatCommon(TestData):
 
 class TestDataFrameCombineFirst(TestData):
 
+    @pytest.mark.xfail(LooseVersion(pd.__version__) > LooseVersion('0.25.0.dev'),
+                  reason="fixed in 0.25.dev")
     def test_combine_first_mixed(self):
         a = Series(['a', 'b'], index=lrange(2))
         b = Series(lrange(2), index=lrange(2))
@@ -527,6 +530,22 @@ class TestDataFrameCombineFirst(TestData):
         g = DataFrame({'A': a, 'B': b})
 
         exp = pd.DataFrame({'A': list('abab'), 'B': [0., 1., 0., 1.]},
+                           index=[0, 1, 5, 6])
+        combined = f.combine_first(g)
+        tm.assert_frame_equal(combined, exp)
+
+    @pytest.mark.xfail(LooseVersion(pd.__version__) < LooseVersion('0.25.0.dev'),
+                  reason="fixed in 0.25.dev")
+    def test_combine_first_mixed_fixed(self):
+        a = Series(['a', 'b'], index=lrange(2))
+        b = Series(lrange(2), index=lrange(2))
+        f = DataFrame({'A': a, 'B': b})
+
+        a = Series(['a', 'b'], index=lrange(5, 7))
+        b = Series(lrange(2), index=lrange(5, 7))
+        g = DataFrame({'A': a, 'B': b})
+
+        exp = pd.DataFrame({'A': list('abab'), 'B': [0, 1, 0, 1]},
                            index=[0, 1, 5, 6])
         combined = f.combine_first(g)
         tm.assert_frame_equal(combined, exp)
@@ -672,6 +691,8 @@ class TestDataFrameCombineFirst(TestData):
         df2 = df0.combine_first(df1)
         assert_frame_equal(df2, df0)
 
+    @pytest.mark.xfail(LooseVersion(pd.__version__) > LooseVersion('0.25.0.dev'),
+                  reason="fixed in 0.25.dev")
     def test_combine_first_align_nan(self):
         # GH 7509 (not fixed)
         dfa = pd.DataFrame([[pd.Timestamp('2011-01-01'), 2]],
@@ -694,6 +715,33 @@ class TestDataFrameCombineFirst(TestData):
         tm.assert_frame_equal(res, exp)
         # ToDo: this must be datetime64
         assert res['a'].dtype == 'float64'
+        # ToDo: this must be int64
+        assert res['b'].dtype == 'int64'
+
+    @pytest.mark.xfail(LooseVersion(pd.__version__) < LooseVersion('0.25.0.dev'),
+                       reason="this will pass in 0.25.0.dev")
+    def test_combine_first_align_nan_dtypes(self):
+        # GH 7509 (not fixed)
+        dfa = pd.DataFrame([[pd.Timestamp('2011-01-01'), 2]],
+                           columns=['a', 'b'])
+        dfb = pd.DataFrame([[4], [5]], columns=['b'])
+        assert dfa['a'].dtype == 'datetime64[ns]'
+        assert dfa['b'].dtype == 'int64'
+
+        res = dfa.combine_first(dfb)
+        exp = pd.DataFrame({'a': [pd.Timestamp('2011-01-01'), pd.NaT],
+                            'b': [2, 5]}, columns=['a', 'b'])
+        tm.assert_frame_equal(res, exp)
+        assert res['a'].dtype == 'datetime64[ns]'
+        # ToDo: this must be int64
+        assert res['b'].dtype == 'int64'
+
+        res = dfa.iloc[:0].combine_first(dfb)
+        exp = pd.DataFrame({'a': [pd.NaT, pd.NaT],
+                            'b': [4, 5]}, columns=['a', 'b'])
+        tm.assert_frame_equal(res, exp)
+        # ToDo: this must be datetime64
+        assert res['a'].dtype == 'datetime64[ns]'
         # ToDo: this must be int64
         assert res['b'].dtype == 'int64'
 
@@ -815,7 +863,7 @@ class TestDataFrameCombineFirst(TestData):
         assert res['P'].dtype == 'object'
 
     def test_combine_first_int(self):
-        # GH14687 - integer series that do no align exactly
+        # GH14687 - integer series that do not align exactly
 
         df1 = pd.DataFrame({'a': [0, 1, 3, 5]}, dtype='int64')
         df2 = pd.DataFrame({'a': [1, 4]}, dtype='int64')
