@@ -5307,7 +5307,12 @@ class DataFrame(NDFrame):
                     otherSeries = otherSeries.astype(new_dtype)
 
             arr = func(series, otherSeries)
-            arr = maybe_downcast_to_dtype(arr, this_dtype)
+            if needs_i8_conversion(new_dtype):
+                # hack to retain old behavior when conversion
+                # was triggered
+                arr = maybe_downcast_to_dtype(arr, new_dtype)
+            else:
+                arr = maybe_downcast_to_dtype(arr, this_dtype)
 
             result[col] = arr
 
