@@ -5300,7 +5300,7 @@ class DataFrame(NDFrame):
             if col not in self.columns:
                 # If self DataFrame does not have col in other DataFrame,
                 # try to promote series, which is all NaN, as other_dtype.
-                new_dtype = other_dtype
+                new_dtype = this_dtype = other_dtype
                 try:
                     series = series.astype(new_dtype, copy=False)
                 except ValueError:
@@ -5317,8 +5317,7 @@ class DataFrame(NDFrame):
                     otherSeries = otherSeries.astype(new_dtype)
 
             arr = func(series, otherSeries)
-            arr = maybe_downcast_to_dtype(arr, new_dtype)
-
+            arr = maybe_downcast_to_dtype(arr, this_dtype)
             result[col] = arr
 
         # convert_objects just in case
@@ -5396,6 +5395,10 @@ class DataFrame(NDFrame):
             # just return y_values.
             if y.name not in self.columns:
                 return y_values
+
+            # if not using any of y, just return x
+            if not mask.any():
+                return x_values
 
             return expressions.where(mask, y_values, x_values)
 
