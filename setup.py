@@ -438,7 +438,8 @@ if is_platform_mac():
         if python_target < '10.9' and current_system >= '10.9':
             os.environ['MACOSX_DEPLOYMENT_TARGET'] = '10.9'
 
-
+    extra_compile_args.extend(["-Wno-error=implicit-function-declaration"])
+    
 # enable coverage by building cython files by setting the environment variable
 # "PANDAS_CYTHON_COVERAGE" (with a Truthy value) or by running build_ext
 # with `--with-cython-coverage`enabled
