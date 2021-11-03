@@ -452,7 +452,7 @@ def pxd(name):
 if is_platform_windows():
     extra_compile_args=[]
 else:
-    extra_compile_args=['-Wno-unused-function']
+    extra_compile_args=['-Wno-unused-function', '-Wno-error=implicit-function-declaration']
 
 lib_depends = lib_depends + ['pandas/_libs/src/numpy_helper.h',
                              'pandas/_libs/src/parse_helper.h',
@@ -551,6 +551,8 @@ if sys.byteorder == 'big':
     macros = [('__BIG_ENDIAN__', '1')]
 else:
     macros = [('__LITTLE_ENDIAN__', '1')]
+
+macros += [('HAVE_UNISTD_H', '1')]
 
 packer_ext = Extension('pandas.io.msgpack._packer',
                         depends=['pandas/_libs/src/msgpack/pack.h',
