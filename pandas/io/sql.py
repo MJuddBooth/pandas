@@ -181,7 +181,7 @@ def execute(sql, con, cur=None, params=None):
 
 def read_sql_table(table_name, con, schema=None, index_col=None,
                    coerce_float=True, parse_dates=None, columns=None,
-                   chunksize=None):
+                   chunksize=None, infer_index=False):
     """
     Read SQL database table into a DataFrame.
 
@@ -218,6 +218,9 @@ def read_sql_table(table_name, con, schema=None, index_col=None,
     chunksize : int, default None
         If specified, returns an iterator where `chunksize` is the number of
         rows to include in each chunk.
+    infer_index : bool, default: False
+        If true and reading from a table, infer the index columns from
+        any primary keys that are present on the table.
 
     Returns
     -------
@@ -254,7 +257,8 @@ def read_sql_table(table_name, con, schema=None, index_col=None,
     pandas_sql = SQLDatabase(con, meta=meta)
     table = pandas_sql.read_table(
         table_name, index_col=index_col, coerce_float=coerce_float,
-        parse_dates=parse_dates, columns=columns, chunksize=chunksize)
+        parse_dates=parse_dates, columns=columns, chunksize=chunksize,
+        infer_index=infer_index)
 
     if table is not None:
         return table
@@ -324,7 +328,7 @@ def read_sql_query(sql, con, index_col=None, coerce_float=True, params=None,
 
 
 def read_sql(sql, con, index_col=None, coerce_float=True, params=None,
-             parse_dates=None, columns=None, chunksize=None):
+             parse_dates=None, columns=None, chunksize=None, infer_index=False):
     """
     Read SQL query or database table into a DataFrame.
 
@@ -370,6 +374,9 @@ def read_sql(sql, con, index_col=None, coerce_float=True, params=None,
     chunksize : int, default None
         If specified, return an iterator where `chunksize` is the
         number of rows to include in each chunk.
+    infer_index : bool, default: False
+        If true and reading from a table, infer the index columns from
+        any primary keys that are present on the table.
 
     Returns
     -------
@@ -398,7 +405,8 @@ def read_sql(sql, con, index_col=None, coerce_float=True, params=None,
         pandas_sql.meta.reflect(only=[sql])
         return pandas_sql.read_table(
             sql, index_col=index_col, coerce_float=coerce_float,
-            parse_dates=parse_dates, columns=columns, chunksize=chunksize)
+            parse_dates=parse_dates, columns=columns, chunksize=chunksize,
+            infer_index=infer_index)
     else:
         return pandas_sql.read_query(
             sql, index_col=index_col, params=params,
@@ -407,7 +415,8 @@ def read_sql(sql, con, index_col=None, coerce_float=True, params=None,
 
 
 def to_sql(frame, name, con, schema=None, if_exists='fail', index=True,
-           index_label=None, chunksize=None, dtype=None, method=None):
+           index_label=None, chunksize=None, dtype=None, method=None,
+           keys=None, create_pk=False):
     """
     Write records stored in a DataFrame to a SQL database.
 
@@ -451,8 +460,13 @@ def to_sql(frame, name, con, schema=None, if_exists='fail', index=True,
 
         Details and a sample callable implementation can be found in the
         section :ref:`insert method <io.sql.method>`.
-
         .. versionadded:: 0.24.0
+    create_pk: bool, default False
+        Create the primary key on the table based on the supplied keys
+        argument or inferred from the components of the index.
+    keys: string or listlike, default None
+        Column or columns to be used to create a primary key on the table.
+
     """
     if if_exists not in ('fail', 'replace', 'append', 'truncate'):
         raise ValueError("'{0}' is not valid for if_exists".format(if_exists))
@@ -467,7 +481,8 @@ def to_sql(frame, name, con, schema=None, if_exists='fail', index=True,
 
     pandas_sql.to_sql(frame, name, if_exists=if_exists, index=index,
                       index_label=index_label, schema=schema,
-                      chunksize=chunksize, dtype=dtype, method=method)
+                      chunksize=chunksize, dtype=dtype, method=method,
+                      keys=keys, create_pk=create_pk)
 
 
 def has_table(table_name, con, schema=None):
@@ -698,7 +713,7 @@ class SQLTable(PandasObject):
                 exec_insert(conn, keys, chunk_iter)
 
     def _query_iterator(self, result, chunksize, columns, coerce_float=True,
-                        parse_dates=None):
+                        parse_dates=None, infer_index=False):
         """Return generator through chunked result set."""
 
         while True:
@@ -713,11 +728,15 @@ class SQLTable(PandasObject):
 
                 if self.index is not None:
                     self.frame.set_index(self.index, inplace=True)
+                elif infer_index:
+                    index = [c.name for c in self.table.columns if c.primary_key]
+                    if index:
+                        self.frame.set_index(index, inplace=True)
 
                 yield self.frame
 
     def read(self, coerce_float=True, parse_dates=None, columns=None,
-             chunksize=None):
+             chunksize=None, infer_index=False):
 
         if columns is not None and len(columns) > 0:
             from sqlalchemy import select
@@ -734,7 +753,8 @@ class SQLTable(PandasObject):
         if chunksize is not None:
             return self._query_iterator(result, chunksize, column_names,
                                         coerce_float=coerce_float,
-                                        parse_dates=parse_dates)
+                                        parse_dates=parse_dates,
+                                        infer_index=infer_index)
         else:
             data = result.fetchall()
             self.frame = DataFrame.from_records(
@@ -743,7 +763,11 @@ class SQLTable(PandasObject):
             self._harmonize_columns(parse_dates=parse_dates)
 
             if self.index is not None:
-                self.frame.set_index(self.index, inplace=True)
+                index = self.frame.set_index(self.index, inplace=True)
+            elif infer_index:
+                index = [c.name for c in self.table.columns if c.primary_key]
+                if index:
+                    self.frame.set_index(index, inplace=True)
 
             return self.frame
 
@@ -1003,7 +1027,7 @@ class SQLDatabase(PandasSQL):
 
     def read_table(self, table_name, index_col=None, coerce_float=True,
                    parse_dates=None, columns=None, schema=None,
-                   chunksize=None):
+                   chunksize=None, infer_index=False):
         """Read SQL database table into a DataFrame.
 
         Parameters
@@ -1034,7 +1058,9 @@ class SQLDatabase(PandasSQL):
         chunksize : int, default None
             If specified, return an iterator where `chunksize` is the number
             of rows to include in each chunk.
-
+        infer_index: bool, default False
+            if True, infer the index from the primary keys on the table,
+            (if they exist)
         Returns
         -------
         DataFrame
@@ -1048,7 +1074,7 @@ class SQLDatabase(PandasSQL):
         table = SQLTable(table_name, self, index=index_col, schema=schema)
         return table.read(coerce_float=coerce_float,
                           parse_dates=parse_dates, columns=columns,
-                          chunksize=chunksize)
+                          chunksize=chunksize, infer_index=infer_index)
 
     @staticmethod
     def _query_iterator(result, chunksize, columns, index_col=None,
@@ -1125,9 +1151,11 @@ class SQLDatabase(PandasSQL):
 
     read_sql = read_query
 
+    # credit to: http://stackoverflow.com/questions/
+    # /30867390/python-pandas-to-sql-how-to-create-a-table-with-a-primary-key
     def to_sql(self, frame, name, if_exists='fail', index=True,
                index_label=None, schema=None, chunksize=None, dtype=None,
-               method=None):
+               method=None, keys=None, create_pk=False):
         """
         Write records stored in a DataFrame to a SQL database.
 
@@ -1168,6 +1196,11 @@ class SQLDatabase(PandasSQL):
             section :ref:`insert method <io.sql.method>`.
 
             .. versionadded:: 0.24.0
+        create_pk: bool, default False
+            create the primary key on the table based on the supplied keys
+            argument or inferred from the components of the index.
+        keys: string or listlike, default None
+            column or columns to be used to create a primary key on the table.
         """
         if dtype and not is_dict_like(dtype):
             dtype = {col_name: dtype for col_name in frame}
@@ -1181,7 +1214,23 @@ class SQLDatabase(PandasSQL):
 
         table = SQLTable(name, self, frame=frame, index=index,
                          if_exists=if_exists, index_label=index_label,
-                         schema=schema, dtype=dtype)
+                         schema=schema, dtype=dtype, keys=keys)
+        if create_pk:
+            if keys is None:
+                keys = table.index if table.index is not None else None
+
+                #FIXME: seems wasteful, but we want to use the
+                # table._index_name functionality so we recreate
+                # the table with the keys
+                table = SQLTable(name, self, frame=frame, index=index,
+                         if_exists=if_exists, index_label=index_label,
+                         schema=schema, dtype=dtype, keys=keys)
+            if table.keys is None:
+                raise ValueError("specified create_pk=True but "
+                                 "cannot identify any keys.")
+        elif keys:
+            raise ValueError("keys specified but create_pk is False!")
+
         table.create()
         table.insert(chunksize, method=method)
         if (not name.isdigit() and not name.islower()):
@@ -1512,7 +1561,7 @@ class SQLiteDatabase(PandasSQL):
 
     def to_sql(self, frame, name, if_exists='fail', index=True,
                index_label=None, schema=None, chunksize=None, dtype=None,
-               method=None):
+               method=None, keys=None, create_pk=False):
         """
         Write records stored in a DataFrame to a SQL database.
 
@@ -1552,6 +1601,11 @@ class SQLiteDatabase(PandasSQL):
             section :ref:`insert method <io.sql.method>`.
 
             .. versionadded:: 0.24.0
+        create_pk: bool, default False
+            Create the primary key on the table based on the supplied keys
+            argument or inferred from the components of the index.
+        keys: string or listlike, default None
+            Column or columns to be used to create a primary key on the table.
         """
         if dtype and not is_dict_like(dtype):
             dtype = {col_name: dtype for col_name in frame}
