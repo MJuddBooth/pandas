@@ -999,7 +999,7 @@ def tz_localize_to_utc(ndarray[int64_t] vals, object tz, object ambiguous=None,
         if trans_idx.size == 1:
             stamp = _render_tstamp(vals[trans_idx])
             raise pytz.AmbiguousTimeError(
-                "Cannot infer dst time from %s as there "
+                "Cannot infer dst time from {} as there "
                 "are no repeated times".format(stamp))
         # Split the array into contiguous chunks (where the difference between
         # indices is 1).  These are effectively dst transitions in different
@@ -1024,7 +1024,7 @@ def tz_localize_to_utc(ndarray[int64_t] vals, object tz, object ambiguous=None,
                 switch_idx = (delta <= 0).nonzero()[0]
                 if switch_idx.size > 1:
                     raise pytz.AmbiguousTimeError(
-                        "There are %i dst switches when "
+                        "There are {} dst switches when "
                         "there should only be 1.".format(switch_idx.size))
                 switch_idx = switch_idx[0] + 1
                 # Pull the only index and adjust
