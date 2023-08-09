@@ -423,7 +423,7 @@ if is_platform_windows():
     extra_compile_args = []
 else:
     # args to ignore warnings
-    extra_compile_args = ['-Wno-unused-function']
+    extra_compile_args = ['-Wno-unused-function', '-Wno-error=implicit-function-declaration']
 
 
 # For mac, ensure extensions are built for macos 10.9 when compiling on a
