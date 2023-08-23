@@ -243,6 +243,7 @@ def read_sql_table(
     columns: list[str] | None = ...,
     chunksize: None = ...,
     dtype_backend: DtypeBackend | lib.NoDefault = ...,
+    infer_index: bool = False,
 ) -> DataFrame: ...
 
 
@@ -257,6 +258,7 @@ def read_sql_table(
     columns: list[str] | None = ...,
     chunksize: int = ...,
     dtype_backend: DtypeBackend | lib.NoDefault = ...,
+    infer_index: bool = False,
 ) -> Iterator[DataFrame]: ...
 
 
@@ -270,6 +272,7 @@ def read_sql_table(
     columns: list[str] | None = None,
     chunksize: int | None = None,
     dtype_backend: DtypeBackend | lib.NoDefault = lib.no_default,
+    infer_index: bool = False,
 ) -> DataFrame | Iterator[DataFrame]:
     """
     Read SQL database table into a DataFrame.
@@ -317,6 +320,9 @@ def read_sql_table(
           :class:`ArrowDtype` :class:`DataFrame`
 
         .. versionadded:: 2.0
+    infer_index : bool, default False
+        if True and the table has a primary key, those columns will be
+        used to set the index on the returned dataframe.
 
     Returns
     -------
@@ -355,6 +361,7 @@ def read_sql_table(
             columns=columns,
             chunksize=chunksize,
             dtype_backend=dtype_backend,
+            infer_index=infer_index,
         )
 
     if table is not None:
@@ -511,6 +518,7 @@ def read_sql(
     chunksize: None = ...,
     dtype_backend: DtypeBackend | lib.NoDefault = ...,
     dtype: DtypeArg | None = None,
+    infer_index: bool = False,
 ) -> DataFrame: ...
 
 
@@ -526,6 +534,7 @@ def read_sql(
     chunksize: int = ...,
     dtype_backend: DtypeBackend | lib.NoDefault = ...,
     dtype: DtypeArg | None = None,
+) -> Iterator[DataFrame]:
 ) -> Iterator[DataFrame]: ...
 
 
@@ -540,6 +549,7 @@ def read_sql(
     chunksize: int | None = None,
     dtype_backend: DtypeBackend | lib.NoDefault = lib.no_default,
     dtype: DtypeArg | None = None,
+    infer_index: bool = False,
 ) -> DataFrame | Iterator[DataFrame]:
     """
     Read SQL query or database table into a DataFrame.
@@ -605,6 +615,9 @@ def read_sql(
         The argument is ignored if a table is passed instead of a query.
 
         .. versionadded:: 2.0.0
+    infer_index : bool, default: False
+        If true and reading from a table, infer the index columns from
+        any primary keys that are present on the table.
 
     Returns
     -------
@@ -717,6 +730,7 @@ def read_sql(
                 columns=columns,
                 chunksize=chunksize,
                 dtype_backend=dtype_backend,
+                infer_index=infer_index,
             )
         else:
             return pandas_sql.read_query(
@@ -742,6 +756,7 @@ def to_sql(
     chunksize: int | None = None,
     dtype: DtypeArg | None = None,
     method: Literal["multi"] | Callable | None = None,
+    create_pk: bool = False,
     engine: str = "auto",
     **engine_kwargs,
 ) -> int | None:
@@ -789,6 +804,9 @@ def to_sql(
 
         Details and a sample callable implementation can be found in the
         section :ref:`insert method <io.sql.method>`.
+    create_pk : bool. default False
+        if True, a primary key will be created on the table composed of the
+        index columns.
     engine : {'auto', 'sqlalchemy'}, default 'auto'
         SQL engine library to use. If 'auto', then the option
         ``io.sql.engine`` is used. The default ``io.sql.engine``
@@ -837,6 +855,7 @@ def to_sql(
             chunksize=chunksize,
             dtype=dtype,
             method=method,
+            create_pk=create_pk,
             engine=engine,
             **engine_kwargs,
         )
@@ -924,7 +943,7 @@ class SQLTable(PandasObject):
         pandas_sql_engine,
         frame=None,
         index: bool | str | list[str] | None = True,
-        if_exists: Literal["fail", "replace", "append"] = "fail",
+        if_exists: Literal["fail", "replace", "append", "truncate"] = "fail",
         prefix: str = "pandas",
         index_label=None,
         schema=None,
@@ -975,6 +994,8 @@ class SQLTable(PandasObject):
             if self.if_exists == "replace":
                 self.pd_sql.drop_table(self.name, self.schema)
                 self._execute_create()
+            elif self.if_exists == "truncate":
+                self.pd_sql.truncate_table(self.name, self.schema)
             elif self.if_exists == "append":
                 pass
             else:
@@ -1119,6 +1140,7 @@ class SQLTable(PandasObject):
         coerce_float: bool = True,
         parse_dates=None,
         dtype_backend: DtypeBackend | Literal["numpy"] = "numpy",
+        infer_index: bool = False,
     ) -> Generator[DataFrame, None, None]:
         """Return generator through chunked result set."""
         has_read_data = False
@@ -1143,7 +1165,10 @@ class SQLTable(PandasObject):
 
                 if self.index is not None:
                     self.frame.set_index(self.index, inplace=True)
-
+                elif infer_index:
+                    index = [c.name for c in self.table.columns if c.primary_key]
+                    if index:
+                        self.frame.set_index(index, inplace=True)
                 yield self.frame
 
     def read(
@@ -1154,6 +1179,7 @@ class SQLTable(PandasObject):
         columns=None,
         chunksize: int | None = None,
         dtype_backend: DtypeBackend | Literal["numpy"] = "numpy",
+        infer_index: bool = False,
     ) -> DataFrame | Iterator[DataFrame]:
         from sqlalchemy import select
 
@@ -1177,6 +1203,7 @@ class SQLTable(PandasObject):
                 coerce_float=coerce_float,
                 parse_dates=parse_dates,
                 dtype_backend=dtype_backend,
+                infer_index=infer_index,
             )
         else:
             data = result.fetchall()
@@ -1190,6 +1217,10 @@ class SQLTable(PandasObject):
 
             if self.index is not None:
                 self.frame.set_index(self.index, inplace=True)
+            elif infer_index:
+                index = [c.name for c in self.table.columns if c.primary_key]
+                if index:
+                    self.frame.set_index(index, inplace=True)
 
             return self.frame
 
@@ -1446,6 +1477,7 @@ class PandasSQL(PandasObject, ABC):
         schema: str | None = None,
         chunksize: int | None = None,
         dtype_backend: DtypeBackend | Literal["numpy"] = "numpy",
+        infer_index: bool = False,
     ) -> DataFrame | Iterator[DataFrame]:
         raise NotImplementedError
 
@@ -1475,6 +1507,7 @@ class PandasSQL(PandasObject, ABC):
         chunksize: int | None = None,
         dtype: DtypeArg | None = None,
         method: Literal["multi"] | Callable | None = None,
+        create_pk: bool = False,
         engine: str = "auto",
         **engine_kwargs,
     ) -> int | None:
@@ -1654,6 +1687,7 @@ class SQLDatabase(PandasSQL):
         schema: str | None = None,
         chunksize: int | None = None,
         dtype_backend: DtypeBackend | Literal["numpy"] = "numpy",
+        infer_index: bool = False,
     ) -> DataFrame | Iterator[DataFrame]:
         """
         Read SQL database table into a DataFrame.
@@ -1697,6 +1731,10 @@ class SQLDatabase(PandasSQL):
               :class:`ArrowDtype` :class:`DataFrame`
 
             .. versionadded:: 2.0
+        infer_index : bool, default False
+            if True and the table has a primary key, those columns will be
+            used to set the index on the returned dataframe.
+
 
         Returns
         -------
@@ -1719,6 +1757,7 @@ class SQLDatabase(PandasSQL):
             columns=columns,
             chunksize=chunksize,
             dtype_backend=dtype_backend,
+            infer_index=infer_index,
         )
 
     @staticmethod
@@ -1854,11 +1893,12 @@ class SQLDatabase(PandasSQL):
         self,
         frame,
         name: str,
-        if_exists: Literal["fail", "replace", "append"] = "fail",
+        if_exists: Literal["fail", "replace", "append", "truncate"] = "fail",
         index: bool | str | list[str] | None = True,
         index_label=None,
         schema=None,
         dtype: DtypeArg | None = None,
+        create_pk: bool = False,
     ) -> SQLTable:
         """
         Prepares table in the database for data insertion. Creates it if needed, etc.
@@ -1895,6 +1935,23 @@ class SQLDatabase(PandasSQL):
             schema=schema,
             dtype=dtype,
         )
+
+        if create_pk:
+            # somewhat wasteful, but re-create table with keys set from
+            # the index.  Then we can use table.index, otherwise we need
+            # recreate a bunch of logic
+            keys = table.index()
+            table = SQLTable(
+                name,
+                self,
+                frame=frame,
+                index=index,
+                if_exists=if_exists,
+                index_label=index_label,
+                schema=schema,
+                keys=keys,
+                dtype=dtype,
+            )
         table.create()
         return table
 
@@ -1938,6 +1995,7 @@ class SQLDatabase(PandasSQL):
         chunksize: int | None = None,
         dtype: DtypeArg | None = None,
         method: Literal["multi"] | Callable | None = None,
+        create_pk: bool = False,
         engine: str = "auto",
         **engine_kwargs,
     ) -> int | None:
@@ -1979,6 +2037,8 @@ class SQLDatabase(PandasSQL):
 
             Details and a sample callable implementation can be found in the
             section :ref:`insert method <io.sql.method>`.
+        create_pk : bool, default False
+            if True, us the index column(s) to create a primary key on the table
         engine : {'auto', 'sqlalchemy'}, default 'auto'
             SQL engine library to use. If 'auto', then the option
             ``io.sql.engine`` is used. The default ``io.sql.engine``
@@ -1999,6 +2059,7 @@ class SQLDatabase(PandasSQL):
             index_label=index_label,
             schema=schema,
             dtype=dtype,
+            create_pk=create_pk,
         )
 
         total_inserted = sql_engine.insert_records(
@@ -2047,6 +2108,22 @@ class SQLDatabase(PandasSQL):
             )
             with self.run_transaction():
                 self.get_table(table_name, schema).drop(bind=self.con)
+            self.meta.clear()
+
+    def truncate_table(self, table_name: str, schema: str | None = None) -> None:
+        schema = schema or self.meta.schema
+        if self.has_table(table_name, schema):
+            self.meta.reflect(
+                bind=self.con, only=[table_name], schema=schema, views=True
+            )
+            with self.run_transaction():
+                table = self.get_table(table_name, schema)
+                # FIXME: There should be a more natural way to properly
+                # quote table and schema
+                fullname = ".".join([_get_valid_sqlite_name(x)
+                                     for x in [table.schema, table.name]])
+                with table.bind.begin() as conn:
+                    conn.execute("TRUNCATE TABLE {} RESTART IDENTITY".format(fullname))
             self.meta.clear()
 
     def _create_sql_schema(
@@ -2857,6 +2934,10 @@ class SQLiteDatabase(PandasSQL):
     def drop_table(self, name: str, schema: str | None = None) -> None:
         drop_sql = f"DROP TABLE {_get_valid_sqlite_name(name)}"
         self.execute(drop_sql)
+
+    def truncate_table(self, name: str, schema: str | None = None) -> None:
+        delete_sql = f"DELETE FROM {_get_valid_sqlite_name(name)}"
+        self.execute(delete_sql)
 
     def _create_sql_schema(
         self,
