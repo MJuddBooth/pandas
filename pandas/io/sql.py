@@ -1941,7 +1941,7 @@ class SQLDatabase(PandasSQL):
             # somewhat wasteful, but re-create table with keys set from
             # the index.  Then we can use table.index, otherwise we need
             # recreate a bunch of logic
-            keys = table.index()
+            keys = table.index
             table = SQLTable(
                 name,
                 self,
