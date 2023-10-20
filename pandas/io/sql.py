@@ -2118,14 +2118,13 @@ class SQLDatabase(PandasSQL):
             self.meta.reflect(
                 bind=self.con, only=[table_name], schema=schema, views=True
             )
-            with self.run_transaction():
+            with self.run_transaction() as conn:
                 table = self.get_table(table_name, schema)
                 # FIXME: There should be a more natural way to properly
                 # quote table and schema
                 fullname = ".".join([_get_valid_sqlite_name(x)
                                      for x in [table.schema, table.name]])
-                with table.bind.begin() as conn:
-                    conn.execute("TRUNCATE TABLE {} RESTART IDENTITY".format(fullname))
+                conn.execute(f"TRUNCATE TABLE {fullname} RESTART IDENTITY")
             self.meta.clear()
 
     def _create_sql_schema(
