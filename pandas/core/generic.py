@@ -2772,6 +2772,7 @@ class NDFrame(PandasObject, indexing.IndexingMixin):
         chunksize: int | None = None,
         dtype: DtypeArg | None = None,
         method: Literal["multi"] | Callable | None = None,
+        create_pk: bool = False,
     ) -> int | None:
         """
         Write records stored in a DataFrame to a SQL database.
@@ -2828,6 +2829,8 @@ class NDFrame(PandasObject, indexing.IndexingMixin):
 
             Details and a sample callable implementation can be found in the
             section :ref:`insert method <io.sql.method>`.
+        create_pk : bool, default False
+            if True, us the index column(s) to create a primary key on the table
 
         Returns
         -------
@@ -3001,6 +3004,7 @@ class NDFrame(PandasObject, indexing.IndexingMixin):
             chunksize=chunksize,
             dtype=dtype,
             method=method,
+            create_pk=create_pk,
         )
 
     @final
